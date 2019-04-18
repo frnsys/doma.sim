@@ -1,7 +1,7 @@
 use std::collections::HashSet;
 
-pub trait Cell: Clone + PartialEq {}
-impl<T> Cell for T where T: Clone + PartialEq {}
+pub trait Cell {}
+impl<T> Cell for T {}
 
 #[derive(Hash, Clone, Copy, PartialEq, Eq, Debug)]
 pub struct Position(pub isize, pub isize);
@@ -62,20 +62,20 @@ impl<C: Cell> HexGrid<C> {
         let mut neighbs = HashSet::new();
         let mut next = vec![pos];
         for _ in 0..r {
-            let adj: Vec<Position> = next.iter().map(|&p| self.adjacent(p)).flatten().collect();
+            let adj: Vec<Position> = next.iter().flat_map(|&p| self.adjacent(p)).collect();
             neighbs.extend(adj.to_vec());
             next = adj;
         }
-        return neighbs.into_iter().collect();
+        neighbs.into_iter().collect()
     }
 
-    // Iterate over cells
-    pub fn cells(&self) {
-        self.grid.iter().map(|row| row).flatten();
+    // Iterate over cells as Options (some of which may be None)
+    pub fn cells(&self) -> Vec<&Option<C>> {
+        self.grid.iter().flat_map(|row| row).collect()
     }
 
     // 2D euclidean distance
     pub fn distance(&self, a: Position, b: Position) -> f64 {
-        return (((a.0 - b.0).pow(2) + (a.1 - b.1).pow(2)) as f64).sqrt()
+        (((a.0 - b.0).pow(2) + (a.1 - b.1).pow(2)) as f64).sqrt()
     }
 }
