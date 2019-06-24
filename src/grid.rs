@@ -3,8 +3,7 @@ use std::collections::HashSet;
 pub trait Cell {}
 impl<T> Cell for T {}
 
-#[derive(Hash, Clone, Copy, PartialEq, Eq, Debug)]
-pub struct Position(pub isize, pub isize);
+pub type Position = (isize, isize);
 
 const ODD_ADJACENT_POSITIONS: [(isize, isize); 6] = [
   (-1,  0), // upper left
@@ -27,7 +26,7 @@ const EVEN_ADJACENT_POSITIONS: [(isize, isize); 6] = [
 pub struct HexGrid<C: Cell> {
     rows: usize,
     cols: usize,
-    grid: Vec<Vec<Option<C>>>
+    pub grid: Vec<Vec<Option<C>>>
 }
 
 impl<C: Cell> HexGrid<C> {
@@ -54,7 +53,7 @@ impl<C: Cell> HexGrid<C> {
 
             // Check w/in grid bounds
             .filter(|p| p.0 >= 0 && p.0 < (self.rows as isize) && p.1 >= 0 && p.1 < (self.cols as isize))
-            .map(|p| Position(p.0, p.1)).collect()
+            .map(|p| (p.0, p.1)).collect()
     }
 
     // Positions within a radius of the specified position
@@ -70,12 +69,21 @@ impl<C: Cell> HexGrid<C> {
     }
 
     // Iterate over cells as Options (some of which may be None)
-    pub fn cells(&self) -> Vec<&Option<C>> {
-        self.grid.iter().flat_map(|row| row).collect()
+    pub fn cells(&self) -> Vec<Option<&C>> {
+        self.grid.iter().flat_map(|row| row).map(|c| c.as_ref()).collect()
     }
 
     // 2D euclidean distance
     pub fn distance(&self, a: Position, b: Position) -> f64 {
         (((a.0 - b.0).pow(2) + (a.1 - b.1).pow(2)) as f64).sqrt()
     }
+
+    pub fn set_cell(&mut self, pos: Position, cell: C) {
+        self.grid[pos.0 as usize][pos.1 as usize] = Some(cell);
+    }
+
+    pub fn get_cell(&self, pos: Position) -> Option<&C> {
+        self.grid[pos.0 as usize][pos.1 as usize].as_ref()
+    }
 }
+
