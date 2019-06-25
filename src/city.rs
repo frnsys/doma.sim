@@ -59,7 +59,8 @@ pub struct Unit {
     pub months_vacant: usize,
     pub lease_month: usize,
     pub owner: (AgentType, usize),
-    pub pos: Position
+    pub pos: Position,
+    pub offers: Vec<(usize, usize)> // landlord id, offer amount
 }
 
 impl Unit {

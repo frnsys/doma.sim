@@ -135,6 +135,51 @@ impl Tenant {
             ratio * (spaciousness + parcel.desirability + unit.condition + commute)
         }
     }
+
+    pub fn check_purchase_offers(&mut self, city: &mut City, price_to_rent_ratio: f32) -> Vec<(usize, usize)> {
+        // If they own units,
+        // check purchase offers
+        let mut transfers = Vec::new();
+        for u in &self.units {
+            let mut unit = &mut city.units[*u];
+            if unit.offers.len() == 0 {
+                continue
+            } else {
+                // This should reflect the following:
+                // - since rents decrease as the apartment is vacant,
+                //   the longer the vacancy, the more likely they are to sell
+                // - maintenance costs become too much
+                let parcel = &city.parcels[&unit.pos];
+                let est_value = unit.rent * 12 * (price_to_rent_ratio * parcel.desirability).round() as usize;
+
+                // Find best offer, if any
+                // and mark offers as rejected or accepted
+                let (landlord, best_amount): (usize, usize) = unit.offers.iter().fold((0, 0), |(l, best), (landlord, amount)| {
+                    if *amount > est_value && *amount > best {
+                        (*landlord, *amount)
+                    } else {
+                        (l, best)
+                    }
+                });
+                if best_amount > 0 {
+                    unit.value = best_amount;
+                    unit.owner = (AgentType::Landlord, landlord);
+                    transfers.push((landlord, *u));
+                }
+            }
+
+            // TODO
+            // best_offer.landlord.property_fund -= best_offer.amount
+
+            unit.offers.clear();
+        }
+
+        // Remove sold units
+        for (_, unit_id) in &transfers {
+            self.units.retain(|u_id| u_id != unit_id);
+        }
+        transfers
+    }
 }
 
 #[derive(Debug)]
@@ -251,5 +296,47 @@ impl Landlord {
                 continue
             }
         }
+    }
+
+    pub fn check_purchase_offers(&mut self, city: &mut City, price_to_rent_ratio: f32) -> Vec<(usize, usize)> {
+        let mut transfers = Vec::new();
+        for u in &self.units {
+            let mut unit = &mut city.units[*u];
+            if unit.offers.len() == 0 {
+                continue
+            } else {
+                // This should reflect the following:
+                // - since rents decrease as the apartment is vacant,
+                //   the longer the vacancy, the more likely they are to sell
+                // - maintenance costs become too much
+                let parcel = &city.parcels[&unit.pos];
+                let est_future_rent = self.trend_ests[&parcel.neighborhood.unwrap()];
+                let est_value = ((est_future_rent * unit.area as f32).round() * 12. * (price_to_rent_ratio * parcel.desirability).round()) as usize;
+
+                // Find best offer, if any
+                // and mark offers as rejected or accepted
+                let (landlord, best_amount): (usize, usize) = unit.offers.iter().fold((0, 0), |(l, best), (landlord, amount)| {
+                    if *amount > est_value && *amount > best {
+                        (*landlord, *amount)
+                    } else {
+                        (l, best)
+                    }
+                });
+                if best_amount > 0 {
+                    unit.value = best_amount;
+                    unit.owner = (AgentType::Landlord, landlord);
+                    transfers.push((landlord, *u));
+                }
+            }
+
+            // TODO
+            // best_offer.landlord.property_fund -= best_offer.amount
+            unit.offers.clear();
+        }
+
+        for (_, unit_id) in &transfers {
+            self.units.retain(|u_id| u_id != unit_id);
+        }
+        transfers
     }
 }

@@ -150,6 +150,7 @@ fn main() {
                         value: value,
                         condition: 1.0,
                         tenants: HashSet::new(),
+                        offers: Vec::new(),
                         months_vacant: 0,
                         lease_month: 0,
                         owner: (AgentType::Landlord, 0) // Dummy placeholder
@@ -300,9 +301,20 @@ fn main() {
         }
 
         let mut vacant_units: Vec<usize> = city.units.iter().filter(|u| u.vacancies() > 0).map(|u| u.id).collect();
-        println!("{:?} vacants", vacant_units.len());
         for tenant in &mut tenants {
             tenant.step(&mut city, step, &mut vacant_units);
+        }
+
+        let mut transfers = Vec::new();
+        for tenant in &mut tenants {
+            transfers.extend(tenant.check_purchase_offers(&mut city, map.city.price_to_rent_ratio));
+        }
+        for landlord in &mut landlords {
+            transfers.extend(landlord.check_purchase_offers(&mut city, map.city.price_to_rent_ratio));
+        }
+        for (landlord_id, unit_id) in transfers {
+            let landlord = &mut landlords[landlord_id];
+            landlord.units.push(unit_id);
         }
     }
 
