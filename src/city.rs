@@ -1,7 +1,7 @@
 use super::grid::{HexGrid, Position};
 use super::agent::{AgentType};
 use strum_macros::{EnumString};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 
 #[derive(PartialEq, Debug, EnumString)]
 pub enum ParcelType {
@@ -23,7 +23,8 @@ pub struct City {
     pub grid: HexGrid,
     pub buildings: HashMap<Position, Building>,
     pub parcels: HashMap<Position, Parcel>,
-    pub units: Vec<Unit>
+    pub units: Vec<Unit>,
+    pub units_by_neighborhood: HashMap<usize, Vec<usize>>,
 }
 
 
@@ -33,7 +34,8 @@ impl City {
             grid: HexGrid::new(rows, cols),
             units: Vec::new(),
             parcels: HashMap::new(),
-            buildings: HashMap::new()
+            buildings: HashMap::new(),
+            units_by_neighborhood: HashMap::new()
         }
     }
 
@@ -53,7 +55,7 @@ pub struct Unit {
     pub condition: f32,
     pub area: usize,
     pub value: usize,
-    pub tenants: Vec<usize>,
+    pub tenants: HashSet<usize>,
     pub months_vacant: usize,
     pub lease_month: usize,
     pub owner: (AgentType, usize),
@@ -63,6 +65,10 @@ pub struct Unit {
 impl Unit {
     pub fn vacancies(&self) -> usize {
         self.occupancy - self.tenants.len()
+    }
+
+    pub fn rent_per_area(&self) -> f32 {
+        self.rent as f32/self.area as f32
     }
 }
 

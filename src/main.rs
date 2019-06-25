@@ -13,7 +13,7 @@ use std::io::BufReader;
 use std::fs::File;
 use serde::{Deserialize};
 use std::str::FromStr;
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
 use rand::Rng;
 use std::cmp::{max};
 use rand::prelude::*;
@@ -76,12 +76,6 @@ fn main() {
     let cols = map.layout[0].len();
     let mut city = City::new(rows, cols);
 
-    // println!("{:?}", map.neighborhoods);
-    let mut neighborhood_trends: HashMap<usize, OpenSimplex> = HashMap::new();
-    for id in map.neighborhoods.keys() {
-        neighborhood_trends.insert(*id, OpenSimplex::new());
-    }
-
     let mut parcels = HashMap::new();
     for (r, row) in map.layout.iter().enumerate() {
         for (c, cell) in row.iter().enumerate() {
@@ -111,6 +105,14 @@ fn main() {
     let mut buildings = HashMap::new();
     let mut commercial = Vec::new();
     let mut commercial_weights = Vec::new();
+
+    // Group units by neighborhood for lookup
+    // and create neighborhood desirability trends
+    let mut neighborhood_trends: HashMap<usize, OpenSimplex> = HashMap::new();
+    for id in map.neighborhoods.keys() {
+        neighborhood_trends.insert(*id, OpenSimplex::new());
+        city.units_by_neighborhood.insert(*id, Vec::new());
+    }
 
     for p in parcels.values().filter(|p| p.typ == ParcelType::Residential) {
     // for p in city.parcels_of_type(ParcelType::Residential) {
@@ -147,11 +149,12 @@ fn main() {
                         area: area,
                         value: value,
                         condition: 1.0,
-                        tenants: Vec::new(),
+                        tenants: HashSet::new(),
                         months_vacant: 0,
                         lease_month: 0,
                         owner: (AgentType::Landlord, 0) // Dummy placeholder
                     };
+                    city.units_by_neighborhood.get_mut(&neighb_id).unwrap().push(id);
                     units.push(unit);
                     building_units.push(id);
                 }
@@ -209,7 +212,6 @@ fn main() {
         p.desirability /= mean_desirability;
     }
 
-
     // Update unit values
     for (pos, b) in city.buildings.iter() {
         for u_id in b.units.iter() {
@@ -218,15 +220,13 @@ fn main() {
         }
     }
 
-    let landlords: Vec<Landlord> = (0..map.city.landlords).map(|i| Landlord {
-        id: i as usize,
-        units: Vec::new()
-    }).collect();
+    let mut landlords: Vec<Landlord> = (0..map.city.landlords)
+        .map(|i| Landlord::new(i as usize, map.neighborhoods.keys().cloned().collect())).collect();
 
     let income_dist = WeightedIndex::new(map.city.incomes.iter().map(|i| i.p)).unwrap();
     let work_dist = WeightedIndex::new(commercial_weights).unwrap();
     let vacancies: Vec<usize> = city.units.iter().map(|u| u.id).collect();
-    let tenants: Vec<Tenant> = (0..map.city.population).map(|i| {
+    let mut tenants: Vec<Tenant> = (0..map.city.population).map(|i| {
         let tenant_id = i as usize;
         let income_range = &map.city.incomes[income_dist.sample(&mut rng)];
         let income = rng.gen_range(income_range.low, income_range.high) as usize;
@@ -257,7 +257,7 @@ fn main() {
         });
         tenant.unit = if best_desirability > 0. {
             let u = &mut city.units[best_id];
-            u.tenants.push(tenant_id);
+            u.tenants.insert(tenant_id);
             u.lease_month = lease_month;
             Some(best_id)
         } else {
@@ -276,7 +276,8 @@ fn main() {
                 if roll < 0.33 {
                     (AgentType::Landlord, landlords.choose(&mut rng).unwrap().id)
                 } else if roll < 0.66 {
-                    (AgentType::Tenant, *u.tenants.choose(&mut rng).unwrap())
+                    let unit_tenants: Vec<usize> = u.tenants.iter().cloned().collect();
+                    (AgentType::Tenant, *unit_tenants.choose(&mut rng).unwrap())
                 } else {
                     (AgentType::Tenant, tenants.choose(&mut rng).unwrap().id)
                 }
@@ -289,9 +290,21 @@ fn main() {
             };
         }
     }
+    city.parcels = parcels;
 
-    println!("{:?}", tenants.len());
+    println!("{:?} tenants", tenants.len());
 
-    // println!("{:?}", landlords);
-    // println!("Hello, world!");
+    for step in 0..100 {
+        for landlord in &mut landlords {
+            landlord.step(&mut city, step);
+        }
+
+        let mut vacant_units: Vec<usize> = city.units.iter().filter(|u| u.vacancies() > 0).map(|u| u.id).collect();
+        println!("{:?} vacants", vacant_units.len());
+        for tenant in &mut tenants {
+            tenant.step(&mut city, step, &mut vacant_units);
+        }
+    }
+
+    println!("Done");
 }

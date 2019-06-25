@@ -11,3 +11,4 @@ serde = { version = "1.0", features = ["derive"] }
 strum = "0.15.0"
 strum_macros = "0.15.0"
 noise = "0.5.1"
+linreg = "0.1.3"
