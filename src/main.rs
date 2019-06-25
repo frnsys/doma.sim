@@ -1,12 +1,14 @@
 extern crate rand;
 extern crate serde;
 extern crate serde_json;
+extern crate noise;
 
 mod grid;
 mod city;
 mod agent;
 use self::city::{City, Unit, Building, Parcel, ParcelType};
 use self::grid::{Position};
+use self::agent::{Landlord, Tenant, AgentType};
 use std::io::BufReader;
 use std::fs::File;
 use serde::{Deserialize};
@@ -14,6 +16,10 @@ use std::str::FromStr;
 use std::collections::HashMap;
 use rand::Rng;
 use std::cmp::{max};
+use rand::prelude::*;
+use rand::distributions::WeightedIndex;
+use rand::seq::SliceRandom;
+use noise::{OpenSimplex};
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -28,10 +34,20 @@ struct Neighborhood {
 }
 
 #[derive(Deserialize, Debug)]
+struct IncomeRange {
+    high: usize,
+    low: usize,
+    p: f32
+}
+
+#[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 struct CityConfig {
     price_per_sqm: f32,
-    price_to_rent_ratio: f32
+    price_to_rent_ratio: f32,
+    landlords: u32,
+    population: u32,
+    incomes: Vec<IncomeRange>
 }
 
 #[derive(Deserialize, Debug)]
@@ -60,8 +76,13 @@ fn main() {
     let cols = map.layout[0].len();
     let mut city = City::new(rows, cols);
 
-    println!("{:?}", map.neighborhoods);
+    // println!("{:?}", map.neighborhoods);
+    let mut neighborhood_trends: HashMap<usize, OpenSimplex> = HashMap::new();
+    for id in map.neighborhoods.keys() {
+        neighborhood_trends.insert(*id, OpenSimplex::new());
+    }
 
+    let mut parcels = HashMap::new();
     for (r, row) in map.layout.iter().enumerate() {
         for (c, cell) in row.iter().enumerate() {
             match cell {
@@ -78,8 +99,7 @@ fn main() {
                             id => Some(id as usize)
                         }
                     };
-                    // println!("{:?}", parcel);
-                    city.grid.set_cell((r as isize, c as isize), parcel);
+                    parcels.insert((r as isize, c as isize), parcel);
                 }
                 None => continue
             }
@@ -89,7 +109,11 @@ fn main() {
     let mut rng = rand::thread_rng();
     let mut units = Vec::new();
     let mut buildings = HashMap::new();
-    for p in city.parcels_of_type(ParcelType::Residential) {
+    let mut commercial = Vec::new();
+    let mut commercial_weights = Vec::new();
+
+    for p in parcels.values().filter(|p| p.typ == ParcelType::Residential) {
+    // for p in city.parcels_of_type(ParcelType::Residential) {
         match p.neighborhood {
             Some(neighb_id) => {
                 let neighb = map.neighborhoods.get(&neighb_id).unwrap();
@@ -117,13 +141,16 @@ fn main() {
                     let id = units.len();
                     let unit = Unit {
                         id: id,
+                        pos: p.pos,
                         rent: rent as usize,
                         occupancy: occupancy,
                         area: area,
                         value: value,
+                        condition: 1.0,
                         tenants: Vec::new(),
                         months_vacant: 0,
                         lease_month: 0,
+                        owner: (AgentType::Landlord, 0) // Dummy placeholder
                     };
                     units.push(unit);
                     building_units.push(id);
@@ -133,6 +160,11 @@ fn main() {
                     units: building_units,
                     n_commercial: n_commercial as usize
                 });
+
+                if n_commercial > 0 {
+                    commercial.push(p.pos);
+                    commercial_weights.push(n_commercial);
+                }
             },
             None => continue
         }
@@ -140,11 +172,13 @@ fn main() {
     city.units = units;
     city.buildings = buildings;
 
-    // let mut total = 0.;
-    // let mut count = 0;
-    let parks: Vec<Position> = city.parcels_of_type(ParcelType::Park).into_iter().map(|p| p.pos).collect();
+    let mut total = 0.;
+    let mut count = 0;
+    // let parks: Vec<Position> = city.parcels_of_type(ParcelType::Park).into_iter().map(|p| p.pos).collect();
+    let parks: Vec<Position> = parcels.values().filter(|p| p.typ == ParcelType::Park).into_iter().map(|p| p.pos).collect();
 
-    for p in city.mut_parcels_of_type(ParcelType::Residential) {
+    // for p in city.mut_parcels_of_type(ParcelType::Residential) {
+    for p in parcels.values_mut().filter(|p| p.typ == ParcelType::Residential) {
         let park_dist = if parks.len() > 0 {
             parks.iter().map(|o| city.grid.distance(p.pos, *o)).fold(1./0., f64::min) as f32
         } else {
@@ -165,9 +199,99 @@ fn main() {
             _ => 0.
         };
         p.desirability = (1./park_dist * 10.) + neighb + (n_commercial as f32)/10.;
-        // total += p.desirability;
-        // count += 1;
+        total += p.desirability;
+        count += 1;
     }
-    // println!("{:?}", city.grid.get_cell((0, 0)));
+
+    // Update weighted parcel desirabilities
+    let mean_desirability = total/count as f32;
+    for p in parcels.values_mut().filter(|p| p.typ == ParcelType::Residential) {
+        p.desirability /= mean_desirability;
+    }
+
+
+    // Update unit values
+    for (pos, b) in city.buildings.iter() {
+        for u_id in b.units.iter() {
+            let u = &mut city.units[*u_id];
+            u.value = (map.city.price_to_rent_ratio * ((u.rent*12) as f32) *parcels[pos].desirability).round() as usize;
+        }
+    }
+
+    let landlords: Vec<Landlord> = (0..map.city.landlords).map(|i| Landlord {
+        id: i as usize,
+        units: Vec::new()
+    }).collect();
+
+    let income_dist = WeightedIndex::new(map.city.incomes.iter().map(|i| i.p)).unwrap();
+    let work_dist = WeightedIndex::new(commercial_weights).unwrap();
+    let vacancies: Vec<usize> = city.units.iter().map(|u| u.id).collect();
+    let tenants: Vec<Tenant> = (0..map.city.population).map(|i| {
+        let tenant_id = i as usize;
+        let income_range = &map.city.incomes[income_dist.sample(&mut rng)];
+        let income = rng.gen_range(income_range.low, income_range.high) as usize;
+        let work_pos = commercial[work_dist.sample(&mut rng)];
+
+        let mut tenant = Tenant {
+            id: tenant_id,
+            unit: None,
+            units: Vec::new(),
+            income: income,
+            work: work_pos
+        };
+
+        let lease_month = rng.gen_range(0, 11) as usize;
+        let (best_id, best_desirability) = vacancies.iter().fold((0, 0.), |acc, u_id| {
+            let u = &city.units[*u_id];
+            let p = &parcels[&u.pos];
+            if u.vacancies() <= 0 {
+                acc
+            } else {
+                let desirability = tenant.desirability(u, p);
+                if desirability > acc.1 {
+                    (*u_id, desirability)
+                } else {
+                    acc
+                }
+            }
+        });
+        tenant.unit = if best_desirability > 0. {
+            let u = &mut city.units[best_id];
+            u.tenants.push(tenant_id);
+            u.lease_month = lease_month;
+            Some(best_id)
+        } else {
+            None
+        };
+
+        tenant
+    }).collect();
+
+    // Distribute ownership of units
+    for (_, b) in city.buildings.iter() {
+        for u_id in b.units.iter() {
+            let u = &mut city.units[*u_id];
+            let roll: f32 = rng.gen();
+            u.owner = if u.tenants.len() > 0 {
+                if roll < 0.33 {
+                    (AgentType::Landlord, landlords.choose(&mut rng).unwrap().id)
+                } else if roll < 0.66 {
+                    (AgentType::Tenant, *u.tenants.choose(&mut rng).unwrap())
+                } else {
+                    (AgentType::Tenant, tenants.choose(&mut rng).unwrap().id)
+                }
+            } else {
+                if roll < 0.5 {
+                    (AgentType::Landlord, landlords.choose(&mut rng).unwrap().id)
+                } else {
+                    (AgentType::Tenant, tenants.choose(&mut rng).unwrap().id)
+                }
+            };
+        }
+    }
+
+    println!("{:?}", tenants.len());
+
+    // println!("{:?}", landlords);
     // println!("Hello, world!");
 }

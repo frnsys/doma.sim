@@ -1,8 +1,5 @@
 use std::collections::HashSet;
 
-pub trait Cell {}
-impl<T> Cell for T {}
-
 pub type Position = (isize, isize);
 
 const ODD_ADJACENT_POSITIONS: [(isize, isize); 6] = [
@@ -23,24 +20,16 @@ const EVEN_ADJACENT_POSITIONS: [(isize, isize); 6] = [
   ( 1,  0)  // bottom right
 ];
 
-pub struct HexGrid<C: Cell> {
+pub struct HexGrid {
     rows: usize,
-    cols: usize,
-    pub grid: Vec<Vec<Option<C>>>
+    cols: usize
 }
 
-impl<C: Cell> HexGrid<C> {
-    pub fn new(rows: usize, cols: usize) -> HexGrid<C> {
-        // Initialize grid
-        let mut grid = Vec::new();
-        for _ in 0..rows {
-            let row = (0..cols).map(|_| None).collect();
-            grid.push(row);
-        }
+impl HexGrid {
+    pub fn new(rows: usize, cols: usize) -> HexGrid {
         HexGrid {
             rows: rows,
-            cols: cols,
-            grid: grid
+            cols: cols
         }
     }
 
@@ -68,22 +57,9 @@ impl<C: Cell> HexGrid<C> {
         neighbs.into_iter().collect()
     }
 
-    // Iterate over cells as Options (some of which may be None)
-    pub fn cells(&self) -> Vec<Option<&C>> {
-        self.grid.iter().flat_map(|row| row).map(|c| c.as_ref()).collect()
-    }
-
     // 2D euclidean distance
     pub fn distance(&self, a: Position, b: Position) -> f64 {
         (((a.0 - b.0).pow(2) + (a.1 - b.1).pow(2)) as f64).sqrt()
-    }
-
-    pub fn set_cell(&mut self, pos: Position, cell: C) {
-        self.grid[pos.0 as usize][pos.1 as usize] = Some(cell);
-    }
-
-    pub fn get_cell(&self, pos: Position) -> Option<&C> {
-        self.grid[pos.0 as usize][pos.1 as usize].as_ref()
     }
 }
 
