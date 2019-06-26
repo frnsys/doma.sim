@@ -10,6 +10,7 @@ mod grid;
 mod city;
 mod agent;
 mod sync;
+mod stats;
 mod design;
 use self::city::{City, Unit, Building, Parcel, ParcelType};
 use self::grid::{Position};
@@ -21,10 +22,13 @@ use std::cmp::{max};
 use rand::prelude::*;
 use rand::distributions::WeightedIndex;
 use rand::seq::SliceRandom;
-use noise::{OpenSimplex};
+use noise::{OpenSimplex, NoiseFn};
 use pbr::ProgressBar;
+use std::fs;
+use serde_json::json;
 
 static DOMA_STARTING_FUNDS: i32 = 2e6 as i32;
+static DESIRABILITY_STRETCH_FACTOR: f64 = 72.;
 
 // TODO
 // move into city implementation
@@ -85,6 +89,8 @@ fn main() {
                 let neighb = design.neighborhoods.get(&neighb_id).unwrap();
                 let mut n_units = rng.gen_range(neighb.min_units, neighb.max_units);
                 let mut n_commercial = 0;
+
+                city.residential_parcels_by_neighborhood.entry(neighb_id).or_insert(Vec::new()).push(p.pos);
 
                 // Houses have no commercial floors
                 // Need to keep these divisible by 4 for towers
@@ -264,6 +270,7 @@ fn main() {
     println!("{:?} tenants", tenants.len());
 
     let steps = 100;
+    let mut history = Vec::new();
     let mut pb = ProgressBar::new(steps);
     for step in 0..steps as usize {
         for landlord in &mut landlords {
@@ -297,11 +304,30 @@ fn main() {
                 _ => {}
             }
         }
+
+        // Desirability changes, random walk
+        for (neighb_id, parcel_ids) in &city.residential_parcels_by_neighborhood {
+            let last_val = if step > 0 {
+                neighborhood_trends[neighb_id].get([(step - 1) as f64/DESIRABILITY_STRETCH_FACTOR, 0.])
+            } else {
+                0.
+            };
+            let val = neighborhood_trends[neighb_id].get([step as f64/DESIRABILITY_STRETCH_FACTOR, 0.]);
+            let change = (val - last_val) as f32;
+            for p in parcel_ids {
+                let parcel = city.parcels.get_mut(p).unwrap();
+                parcel.desirability = f32::max(0., parcel.desirability - change);
+            }
+        }
+
         if synchronize {
             sync::sync(step, &city).unwrap();
         }
+        history.push(stats::stats(&city, &tenants, &landlords, &doma));
         pb.inc();
     }
-
-    println!("Done");
+    let results = json!({
+        "history": history
+    }).to_string();
+    fs::write("output.json", results).expect("Unable to write file");
 }

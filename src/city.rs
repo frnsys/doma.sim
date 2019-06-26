@@ -25,6 +25,7 @@ pub struct City {
     pub parcels: HashMap<Position, Parcel>,
     pub units: Vec<Unit>,
     pub units_by_neighborhood: HashMap<usize, Vec<usize>>,
+    pub residential_parcels_by_neighborhood: HashMap<usize, Vec<Position>>,
 }
 
 
@@ -35,7 +36,8 @@ impl City {
             units: Vec::new(),
             parcels: HashMap::new(),
             buildings: HashMap::new(),
-            units_by_neighborhood: HashMap::new()
+            units_by_neighborhood: HashMap::new(),
+            residential_parcels_by_neighborhood: HashMap::new()
         }
     }
 

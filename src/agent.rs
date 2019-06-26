@@ -27,7 +27,7 @@ fn distance(a: Position, b: Position) -> f64 {
 }
 
 
-#[derive(Display, Debug, Copy, Clone, PartialEq)]
+#[derive(Display, Debug, Copy, Clone, PartialEq, Eq, Hash)]
 pub enum AgentType {
     Tenant,
     Landlord,
@@ -370,7 +370,7 @@ impl Landlord {
 
 pub struct DOMA {
     pub funds: i32,
-    shares: HashMap<usize, f32>,
+    pub shares: HashMap<usize, f32>,
     maintenance: f32,
     pub units: Vec<usize>
 }
