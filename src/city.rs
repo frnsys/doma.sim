@@ -1,9 +1,9 @@
 use super::grid::{HexGrid, Position};
 use super::agent::{AgentType};
-use strum_macros::{EnumString};
+use strum_macros::{EnumString, Display};
 use std::collections::{HashMap, HashSet};
 
-#[derive(PartialEq, Debug, EnumString)]
+#[derive(Display, PartialEq, Debug, EnumString)]
 pub enum ParcelType {
     Residential,
     Industrial,

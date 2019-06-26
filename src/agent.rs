@@ -5,6 +5,7 @@ use std::cmp::{max};
 use std::collections::HashMap;
 use rand::seq::SliceRandom;
 use linreg::{linear_regression};
+use strum_macros::{Display};
 use rand::distributions::WeightedIndex;
 use rand::prelude::*;
 
@@ -26,7 +27,7 @@ fn distance(a: Position, b: Position) -> f64 {
 }
 
 
-#[derive(Debug, Copy, Clone, PartialEq)]
+#[derive(Display, Debug, Copy, Clone, PartialEq)]
 pub enum AgentType {
     Tenant,
     Landlord,

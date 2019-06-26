@@ -21,8 +21,8 @@ const EVEN_ADJACENT_POSITIONS: [(isize, isize); 6] = [
 ];
 
 pub struct HexGrid {
-    rows: usize,
-    cols: usize
+    pub rows: usize,
+    pub cols: usize
 }
 
 impl HexGrid {

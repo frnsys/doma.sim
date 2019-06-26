@@ -2,10 +2,14 @@ extern crate rand;
 extern crate serde;
 extern crate serde_json;
 extern crate noise;
+extern crate redis;
+extern crate md5;
+extern crate pbr;
 
 mod grid;
 mod city;
 mod agent;
+mod sync;
 use self::city::{City, Unit, Building, Parcel, ParcelType};
 use self::grid::{Position};
 use self::agent::{Landlord, Tenant, DOMA, AgentType};
@@ -20,6 +24,7 @@ use rand::prelude::*;
 use rand::distributions::WeightedIndex;
 use rand::seq::SliceRandom;
 use noise::{OpenSimplex};
+use pbr::ProgressBar;
 
 static DOMA_STARTING_FUNDS: i32 = 2e6 as i32;
 
@@ -297,10 +302,13 @@ fn main() {
     city.parcels = parcels;
 
     let mut doma = DOMA::new(DOMA_STARTING_FUNDS);
+    let synchronize = true;
 
     println!("{:?} tenants", tenants.len());
 
-    for step in 0..100 {
+    let steps = 100;
+    let mut pb = ProgressBar::new(steps);
+    for step in 0..steps as usize {
         for landlord in &mut landlords {
             landlord.step(&mut city, step, map.city.price_to_rent_ratio);
         }
@@ -332,6 +340,10 @@ fn main() {
                 _ => {}
             }
         }
+        if synchronize {
+            sync::sync(step, &city).unwrap();
+        }
+        pb.inc();
     }
 
     println!("Done");

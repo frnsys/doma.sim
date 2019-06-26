@@ -822,7 +822,7 @@
       }
     ],
     "landlords": 10,
-    "population": 1000,
+    "population": 60000,
     "pricePerSqm": 100,
     "priceToRentRatio": 10
   }
