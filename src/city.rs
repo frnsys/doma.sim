@@ -60,10 +60,14 @@ pub struct Unit {
     pub lease_month: usize,
     pub owner: (AgentType, usize),
     pub pos: Position,
-    pub offers: Vec<(usize, usize)> // landlord id, offer amount
+    pub offers: Vec<(AgentType, usize, usize)> // landlord type, landlord id, offer amount
 }
 
 impl Unit {
+    pub fn vacant(&self) -> bool {
+        self.tenants.len() == 0
+    }
+
     pub fn vacancies(&self) -> usize {
         self.occupancy - self.tenants.len()
     }

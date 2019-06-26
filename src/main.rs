@@ -8,7 +8,7 @@ mod city;
 mod agent;
 use self::city::{City, Unit, Building, Parcel, ParcelType};
 use self::grid::{Position};
-use self::agent::{Landlord, Tenant, AgentType};
+use self::agent::{Landlord, Tenant, DOMA, AgentType};
 use std::io::BufReader;
 use std::fs::File;
 use serde::{Deserialize};
@@ -20,6 +20,8 @@ use rand::prelude::*;
 use rand::distributions::WeightedIndex;
 use rand::seq::SliceRandom;
 use noise::{OpenSimplex};
+
+static DOMA_STARTING_FUNDS: i32 = 2e6 as i32;
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
@@ -109,9 +111,9 @@ fn main() {
     // Group units by neighborhood for lookup
     // and create neighborhood desirability trends
     let mut neighborhood_trends: HashMap<usize, OpenSimplex> = HashMap::new();
-    for id in map.neighborhoods.keys() {
-        neighborhood_trends.insert(*id, OpenSimplex::new());
-        city.units_by_neighborhood.insert(*id, Vec::new());
+    for &id in map.neighborhoods.keys() {
+        neighborhood_trends.insert(id, OpenSimplex::new());
+        city.units_by_neighborhood.insert(id, Vec::new());
     }
 
     for p in parcels.values().filter(|p| p.typ == ParcelType::Residential) {
@@ -184,7 +186,7 @@ fn main() {
     // for p in city.mut_parcels_of_type(ParcelType::Residential) {
     for p in parcels.values_mut().filter(|p| p.typ == ParcelType::Residential) {
         let park_dist = if parks.len() > 0 {
-            parks.iter().map(|o| city.grid.distance(p.pos, *o)).fold(1./0., f64::min) as f32
+            parks.iter().map(|&o| city.grid.distance(p.pos, o)).fold(1./0., f64::min) as f32
         } else {
             1.
         };
@@ -215,9 +217,9 @@ fn main() {
 
     // Update unit values
     for (pos, b) in city.buildings.iter() {
-        for u_id in b.units.iter() {
-            let u = &mut city.units[*u_id];
-            u.value = (map.city.price_to_rent_ratio * ((u.rent*12) as f32) *parcels[pos].desirability).round() as usize;
+        for &u_id in b.units.iter() {
+            let u = &mut city.units[u_id];
+            u.value = (map.city.price_to_rent_ratio * ((u.rent*12) as f32) * parcels[pos].desirability).round() as usize;
         }
     }
 
@@ -238,19 +240,20 @@ fn main() {
             unit: None,
             units: Vec::new(),
             income: income,
-            work: work_pos
+            work: work_pos,
+            last_dividend: 0
         };
 
         let lease_month = rng.gen_range(0, 11) as usize;
-        let (best_id, best_desirability) = vacancies.iter().fold((0, 0.), |acc, u_id| {
-            let u = &city.units[*u_id];
+        let (best_id, best_desirability) = vacancies.iter().fold((0, 0.), |acc, &u_id| {
+            let u = &city.units[u_id];
             let p = &parcels[&u.pos];
             if u.vacancies() <= 0 {
                 acc
             } else {
                 let desirability = tenant.desirability(u, p);
                 if desirability > acc.1 {
-                    (*u_id, desirability)
+                    (u_id, desirability)
                 } else {
                     acc
                 }
@@ -270,10 +273,10 @@ fn main() {
 
     // Distribute ownership of units
     for (_, b) in city.buildings.iter() {
-        for u_id in b.units.iter() {
-            let u = &mut city.units[*u_id];
+        for &u_id in b.units.iter() {
+            let u = &mut city.units[u_id];
             let roll: f32 = rng.gen();
-            u.owner = if u.tenants.len() > 0 {
+            u.owner = if !u.vacant() {
                 if roll < 0.33 {
                     (AgentType::Landlord, landlords.choose(&mut rng).unwrap().id)
                 } else if roll < 0.66 {
@@ -293,6 +296,8 @@ fn main() {
     }
     city.parcels = parcels;
 
+    let mut doma = DOMA::new(DOMA_STARTING_FUNDS);
+
     println!("{:?} tenants", tenants.len());
 
     for step in 0..100 {
@@ -305,6 +310,8 @@ fn main() {
             tenant.step(&mut city, step, &mut vacant_units);
         }
 
+        doma.step(&mut city, &mut tenants);
+
         let mut transfers = Vec::new();
         for tenant in &mut tenants {
             transfers.extend(tenant.check_purchase_offers(&mut city, map.city.price_to_rent_ratio));
@@ -312,9 +319,17 @@ fn main() {
         for landlord in &mut landlords {
             transfers.extend(landlord.check_purchase_offers(&mut city, map.city.price_to_rent_ratio));
         }
-        for (landlord_id, unit_id) in transfers {
-            let landlord = &mut landlords[landlord_id];
-            landlord.units.push(unit_id);
+        for (landlord_typ, landlord_id, unit_id) in transfers {
+            match landlord_typ {
+                AgentType::Landlord => {
+                    let landlord = &mut landlords[landlord_id];
+                    landlord.units.push(unit_id);
+                },
+                AgentType::DOMA => {
+                    doma.units.push(unit_id);
+                },
+                _ => {}
+            }
         }
     }
 

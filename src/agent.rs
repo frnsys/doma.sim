@@ -12,16 +12,23 @@ static TENANT_SAMPLE_SIZE: usize = 30;
 static TREND_MONTHS: usize = 12;
 static RENT_INCREASE_RATE: f32 = 1.05;
 static MOVING_PENALTY: f32 = 10.;
+static DOMA_P_RESERVES: f32 = 0.05;
+static DOMA_P_EXPENSES: f32 = 0.05;
+
+// Percent of rent paid to DOMA
+// that converts to shares
+static DOMA_P_RENT_SHARE: f32 = 0.1;
 
 fn distance(a: Position, b: Position) -> f64 {
     (((a.0 - b.0).pow(2) + (a.1 - b.1).pow(2)) as f64).sqrt()
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Copy, Clone, PartialEq)]
 pub enum AgentType {
     Tenant,
-    Landlord
+    Landlord,
+    DOMA
 }
 
 #[derive(Debug)]
@@ -30,7 +37,8 @@ pub struct Tenant {
     pub income: usize,
     pub unit: Option<usize>,
     pub work: Position,
-    pub units: Vec<usize>
+    pub units: Vec<usize>,
+    pub last_dividend: usize
 }
 
 impl Tenant {
@@ -78,15 +86,15 @@ impl Tenant {
         if reconsider && vacant_units.len() > 0 {
             let sample = vacant_units
                 .choose_multiple(&mut rng, TENANT_SAMPLE_SIZE);
-            let (best_id, best_desirability) = sample.fold((0, 0.), |acc, u_id| {
-                let u = &city.units[*u_id];
+            let (best_id, best_desirability) = sample.fold((0, 0.), |acc, &u_id| {
+                let u = &city.units[u_id];
                 let p = &city.parcels[&u.pos];
                 if u.vacancies() <= 0 {
                     acc
                 } else {
                     let desirability = self.desirability(u, p);
                     if desirability > acc.1 {
-                        (*u_id, desirability)
+                        (u_id, desirability)
                     } else {
                         acc
                     }
@@ -107,20 +115,19 @@ impl Tenant {
                 unit.tenants.insert(self.id);
                 moved = true;
                 if unit.vacancies() == 0 {
-                    vacant_units.retain(|u_id| *u_id != best_id);
+                    vacant_units.retain(|&u_id| u_id != best_id);
                 }
             }
         }
     }
 
     pub fn desirability(&self, unit: &Unit, parcel: &Parcel) -> f32 {
-        // TODO
-        // If DOMA is the unit owner,
-        // compute rent adjusted for dividends
-        // let rent = unit.adjusted_rent(tenants=unit.tenants|set([self]))
         let rent = unit.rent;
         let n_tenants = unit.tenants.len() + 1;
-        let rent_per_tenant = max(1, rent/n_tenants);
+
+        // Adjust rent by last DOMA dividend
+        let rent_per_tenant = max(1, rent/n_tenants) - self.last_dividend;
+
         if self.income < rent_per_tenant {
             0.
         } else {
@@ -136,12 +143,12 @@ impl Tenant {
         }
     }
 
-    pub fn check_purchase_offers(&mut self, city: &mut City, price_to_rent_ratio: f32) -> Vec<(usize, usize)> {
+    pub fn check_purchase_offers(&mut self, city: &mut City, price_to_rent_ratio: f32) -> Vec<(AgentType, usize, usize)> {
         // If they own units,
         // check purchase offers
         let mut transfers = Vec::new();
-        for u in &self.units {
-            let mut unit = &mut city.units[*u];
+        for &u in &self.units {
+            let mut unit = &mut city.units[u];
             if unit.offers.len() == 0 {
                 continue
             } else {
@@ -154,17 +161,18 @@ impl Tenant {
 
                 // Find best offer, if any
                 // and mark offers as rejected or accepted
-                let (landlord, best_amount): (usize, usize) = unit.offers.iter().fold((0, 0), |(l, best), (landlord, amount)| {
-                    if *amount > est_value && *amount > best {
-                        (*landlord, *amount)
-                    } else {
-                        (l, best)
-                    }
-                });
+                let (typ, landlord, best_amount): (AgentType, usize, usize) = unit.offers.iter()
+                                                   .fold((AgentType::Landlord, 0, 0), |(t, l, best), &(typ, landlord, amount)| {
+                                                       if amount > est_value && amount > best {
+                                                           (typ, landlord, amount)
+                                                       } else {
+                                                           (t, l, best)
+                                                       }
+                                                   });
                 if best_amount > 0 {
                     unit.value = best_amount;
                     unit.owner = (AgentType::Landlord, landlord);
-                    transfers.push((landlord, *u));
+                    transfers.push((typ, landlord, u));
                 }
             }
 
@@ -175,7 +183,7 @@ impl Tenant {
         }
 
         // Remove sold units
-        for (_, unit_id) in &transfers {
+        for (_, _, unit_id) in &transfers {
             self.units.retain(|u_id| u_id != unit_id);
         }
         transfers
@@ -220,8 +228,8 @@ impl Landlord {
 
         // Maintenance
         let mut rng = rand::thread_rng();
-        for u in &self.units {
-            let mut unit = &mut city.units[*u];
+        for &u in &self.units {
+            let mut unit = &mut city.units[u];
             let decay: f32 = rng.gen();
             unit.condition -= decay * 0.1; // TODO deterioration rate based on build year?
             unit.condition += self.maintenance;
@@ -229,9 +237,9 @@ impl Landlord {
         }
 
         // Manage units
-        for u in &self.units {
-            let mut unit = &mut city.units[*u];
-            if unit.tenants.len() == 0 {
+        for &u in &self.units {
+            let mut unit = &mut city.units[u];
+            if unit.vacant() {
                 unit.months_vacant += 1;
                 if unit.months_vacant % 2 == 0 {
                     // TODO
@@ -258,9 +266,9 @@ impl Landlord {
     fn estimate_rents(&mut self, city: &City) {
         let mut rng = rand::thread_rng();
         let mut neighborhoods: HashMap<usize, Vec<f32>> = HashMap::new();
-        for u in &self.units {
-            let unit = &city.units[*u];
-            if unit.tenants.len() > 0 {
+        for &u in &self.units {
+            let unit = &city.units[u];
+            if !unit.vacant() {
                 let parcel = &city.parcels[&unit.pos];
                 match parcel.neighborhood {
                     Some(neighb_id) => {
@@ -272,11 +280,11 @@ impl Landlord {
             }
         }
 
-        for (neighb_id, rent_history) in &mut self.rent_obvs {
-            let n = neighborhoods.entry(*neighb_id).or_insert(Vec::new());
+        for (&neighb_id, rent_history) in &mut self.rent_obvs {
+            let n = neighborhoods.entry(neighb_id).or_insert(Vec::new());
             let sample = city.units_by_neighborhood[&neighb_id]
                 .choose_multiple(&mut rng, SAMPLE_SIZE)
-                .map(|u_id| city.units[*u_id].rent_per_area());
+                .map(|&u_id| city.units[u_id].rent_per_area());
             n.extend(sample);
             let max_rent = n.iter().cloned().fold(-1., f32::max);
             rent_history.push(max_rent);
@@ -284,24 +292,24 @@ impl Landlord {
     }
 
     fn estimate_trends(&mut self) {
-        for (neighb_id, rent_history) in &self.rent_obvs {
+        for (&neighb_id, rent_history) in &self.rent_obvs {
             if rent_history.len() >= TREND_MONTHS {
                 let ys = &rent_history[rent_history.len() - TREND_MONTHS..];
                 let xs: Vec<f32> = (0..ys.len()).map(|v| v as f32).collect();
                 let (slope, intercept): (f32, f32) = linear_regression(&xs, &ys).unwrap();
                 let est_market_rent = (TREND_MONTHS as f32) * slope + intercept;
-                self.trend_ests.insert(*neighb_id, est_market_rent);
-                self.invest_ests.insert(*neighb_id, est_market_rent - ys.last().unwrap());
+                self.trend_ests.insert(neighb_id, est_market_rent);
+                self.invest_ests.insert(neighb_id, est_market_rent - ys.last().unwrap());
             } else {
                 continue
             }
         }
     }
 
-    pub fn check_purchase_offers(&mut self, city: &mut City, price_to_rent_ratio: f32) -> Vec<(usize, usize)> {
+    pub fn check_purchase_offers(&mut self, city: &mut City, price_to_rent_ratio: f32) -> Vec<(AgentType, usize, usize)> {
         let mut transfers = Vec::new();
-        for u in &self.units {
-            let mut unit = &mut city.units[*u];
+        for &u in &self.units {
+            let mut unit = &mut city.units[u];
             if unit.offers.len() == 0 {
                 continue
             } else {
@@ -315,17 +323,18 @@ impl Landlord {
 
                 // Find best offer, if any
                 // and mark offers as rejected or accepted
-                let (landlord, best_amount): (usize, usize) = unit.offers.iter().fold((0, 0), |(l, best), (landlord, amount)| {
-                    if *amount > est_value && *amount > best {
-                        (*landlord, *amount)
-                    } else {
-                        (l, best)
-                    }
-                });
+                let (typ, landlord, best_amount): (AgentType, usize, usize) = unit.offers.iter()
+                                                   .fold((AgentType::Landlord, 0, 0), |(t, l, best), &(typ, landlord, amount)| {
+                                                    if amount > est_value && amount > best {
+                                                        (typ, landlord, amount)
+                                                    } else {
+                                                        (t, l, best)
+                                                    }
+                                                });
                 if best_amount > 0 {
                     unit.value = best_amount;
                     unit.owner = (AgentType::Landlord, landlord);
-                    transfers.push((landlord, *u));
+                    transfers.push((typ, landlord, u));
                 }
             }
 
@@ -334,9 +343,111 @@ impl Landlord {
             unit.offers.clear();
         }
 
-        for (_, unit_id) in &transfers {
+        for (_, _, unit_id) in &transfers {
             self.units.retain(|u_id| u_id != unit_id);
         }
         transfers
+    }
+}
+
+pub struct DOMA {
+    funds: i32,
+    shares: HashMap<usize, f32>,
+    maintenance: f32,
+    pub units: Vec<usize>
+}
+
+impl DOMA {
+    pub fn new(funds: i32) -> DOMA {
+        DOMA {
+            funds: funds,
+            shares: HashMap::new(),
+            maintenance: 1.,
+            units: Vec::new()
+        }
+    }
+
+    pub fn step(&mut self, city: &mut City, tenants: &mut Vec<Tenant>) {
+        let mut rng = rand::thread_rng();
+
+        // Collect rent
+        let mut rent = 0;
+        for &u_id in &self.units {
+            let unit = &mut city.units[u_id];
+
+            // Maintenance
+            let decay: f32 = rng.gen();
+            unit.condition -= decay * 0.1; // TODO deterioration rate based on build year?
+            unit.condition += self.maintenance;
+            unit.condition = f32::min(f32::max(unit.condition, 0.), 1.);
+
+            if !unit.vacant() {
+                rent += unit.rent;
+                let rent_per_tenant = rent as f32/unit.tenants.len() as f32;
+                for &t in &unit.tenants {
+                    let share = self.shares.entry(t).or_insert(0.);
+                    *share += rent_per_tenant * DOMA_P_RENT_SHARE;
+                }
+            } else {
+                continue
+            }
+        }
+
+        // Pay dividends
+        let p_dividend = 1.0 - DOMA_P_RESERVES - DOMA_P_EXPENSES;
+        let dividends = rent as f32 * p_dividend;
+        for (&tenant_id, share) in &self.shares {
+            let tenant = &mut tenants[tenant_id];
+            tenant.last_dividend = (dividends * share).round() as usize;
+        }
+        self.funds += (rent as f32 * DOMA_P_RESERVES).round() as i32;
+
+        // TODO selling of properties
+
+        // Make offers on properties
+        // Get non-DOMA properties of DOMA tenants
+        let mut candidates: Vec<(usize, usize, usize)> = self.shares.keys().filter_map(|&t| {
+            let tenant = &tenants[t];
+            match tenant.unit {
+                Some(u_id) => {
+                    let unit = &mut city.units[u_id];
+                    if unit.owner.0 == AgentType::DOMA {
+                        Some((u_id, unit.value, unit.rent))
+                    } else {
+                        None
+                    }
+                },
+                None => None
+            }
+        }).collect();
+
+        // Otherwise, consider all unowned properties
+        if candidates.len() == 0 {
+            candidates = city.units.iter_mut().filter_map(|unit| {
+                // Ensure unit is affordable
+                if unit.owner.0 == AgentType::DOMA {
+                    Some((unit.id, unit.value, unit.rent))
+                } else {
+                    None
+                }
+            }).collect();
+        }
+
+        // Filter to affordable
+        candidates = candidates.into_iter().filter(|&(_, value, _)| (value as i32) <= self.funds).collect();
+
+        // Prioritize cheap properties with high rent-to-price ratios
+        candidates.sort_by_key(|&(_, value, rent)| value * (value/rent));
+
+        // Make offers
+        let mut committed = 0;
+        for (id, value, _) in candidates {
+            if (committed + value) as i32 > self.funds {
+                break
+            }
+            committed += value;
+            let unit = &mut city.units[id];
+            unit.offers.push((AgentType::DOMA, 0, value));
+        }
     }
 }
