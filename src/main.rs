@@ -302,7 +302,7 @@ fn main() {
 
     for step in 0..100 {
         for landlord in &mut landlords {
-            landlord.step(&mut city, step);
+            landlord.step(&mut city, step, map.city.price_to_rent_ratio);
         }
 
         let mut vacant_units: Vec<usize> = city.units.iter().filter(|u| u.vacancies() > 0).map(|u| u.id).collect();
@@ -319,7 +319,7 @@ fn main() {
         for landlord in &mut landlords {
             transfers.extend(landlord.check_purchase_offers(&mut city, map.city.price_to_rent_ratio));
         }
-        for (landlord_typ, landlord_id, unit_id) in transfers {
+        for (landlord_typ, landlord_id, unit_id, amount) in transfers {
             match landlord_typ {
                 AgentType::Landlord => {
                     let landlord = &mut landlords[landlord_id];
@@ -327,6 +327,7 @@ fn main() {
                 },
                 AgentType::DOMA => {
                     doma.units.push(unit_id);
+                    doma.funds -= amount as i32;
                 },
                 _ => {}
             }
