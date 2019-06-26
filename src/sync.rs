@@ -59,7 +59,7 @@ pub fn jsonify(month: usize, city: &City) -> Value {
 
 pub fn sync(month: usize, city: &City) -> redis::RedisResult<()> {
     // TODO stats
-    let client = redis::Client::open("redis://127.0.0.1/")?;
+    let client = redis::Client::open("redis://127.0.0.1/1")?;
     let con = client.get_connection()?;
 
     let state_serialized = jsonify(month, city).to_string();
@@ -70,3 +70,4 @@ pub fn sync(month: usize, city: &City) -> redis::RedisResult<()> {
 
     Ok(())
 }
+

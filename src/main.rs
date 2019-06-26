@@ -10,12 +10,10 @@ mod grid;
 mod city;
 mod agent;
 mod sync;
+mod design;
 use self::city::{City, Unit, Building, Parcel, ParcelType};
 use self::grid::{Position};
 use self::agent::{Landlord, Tenant, DOMA, AgentType};
-use std::io::BufReader;
-use std::fs::File;
-use serde::{Deserialize};
 use std::str::FromStr;
 use std::collections::{HashMap, HashSet};
 use rand::Rng;
@@ -28,42 +26,6 @@ use pbr::ProgressBar;
 
 static DOMA_STARTING_FUNDS: i32 = 2e6 as i32;
 
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct Neighborhood {
-    desirability: f32,
-    min_units: u32,
-    max_units: u32,
-    min_area: u32,
-    max_area: u32,
-    sqm_per_occupant: u32,
-    p_commercial: f32
-}
-
-#[derive(Deserialize, Debug)]
-struct IncomeRange {
-    high: usize,
-    low: usize,
-    p: f32
-}
-
-#[derive(Deserialize, Debug)]
-#[serde(rename_all = "camelCase")]
-struct CityConfig {
-    price_per_sqm: f32,
-    price_to_rent_ratio: f32,
-    landlords: u32,
-    population: u32,
-    incomes: Vec<IncomeRange>
-}
-
-#[derive(Deserialize, Debug)]
-struct Map {
-    layout: Vec<Vec<Option<String>>>,
-    neighborhoods: HashMap<usize, Neighborhood>,
-    city: CityConfig
-}
-
 // TODO
 // move into city implementation
 // grid should only be for managing positions, does not hold any cell data
@@ -72,19 +34,14 @@ struct Map {
 // iterate over parcels with hashmap.values
 
 fn main() {
-    let file = File::open("testmap.json").expect("could not open file");
-    let reader = BufReader::new(file);
+    let design = design::load_design("philadelphia");
 
-    // Read the JSON contents of the file as an instance of `User`.
-    let map: Map = serde_json::from_reader(reader).expect("error while reading json");
-    // println!("{:#?}", u);
-
-    let rows = map.layout.len();
-    let cols = map.layout[0].len();
+    let rows = design.map.layout.len();
+    let cols = design.map.layout[0].len();
     let mut city = City::new(rows, cols);
 
     let mut parcels = HashMap::new();
-    for (r, row) in map.layout.iter().enumerate() {
+    for (r, row) in design.map.layout.iter().enumerate() {
         for (c, cell) in row.iter().enumerate() {
             match cell {
                 Some(parcel_str) => {
@@ -116,7 +73,7 @@ fn main() {
     // Group units by neighborhood for lookup
     // and create neighborhood desirability trends
     let mut neighborhood_trends: HashMap<usize, OpenSimplex> = HashMap::new();
-    for &id in map.neighborhoods.keys() {
+    for &id in design.neighborhoods.keys() {
         neighborhood_trends.insert(id, OpenSimplex::new());
         city.units_by_neighborhood.insert(id, Vec::new());
     }
@@ -125,7 +82,7 @@ fn main() {
     // for p in city.parcels_of_type(ParcelType::Residential) {
         match p.neighborhood {
             Some(neighb_id) => {
-                let neighb = map.neighborhoods.get(&neighb_id).unwrap();
+                let neighb = design.neighborhoods.get(&neighb_id).unwrap();
                 let mut n_units = rng.gen_range(neighb.min_units, neighb.max_units);
                 let mut n_commercial = 0;
 
@@ -144,8 +101,8 @@ fn main() {
                 let mut building_units: Vec<usize> = Vec::new();
                 for _ in 0..n_units {
                     let area = rng.gen_range(neighb.min_area, neighb.max_area) as usize;
-                    let rent = (map.city.price_per_sqm*(area as f32)*neighb.desirability).round();
-                    let value = (map.city.price_to_rent_ratio*(rent*12.)*neighb.desirability).round() as usize;
+                    let rent = (design.city.price_per_sqm*(area as f32)*neighb.desirability).round();
+                    let value = (design.city.price_to_rent_ratio*(rent*12.)*neighb.desirability).round() as usize;
                     let occupancy = max(1, ((area as f32)/(neighb.sqm_per_occupant as f32)).round() as usize);
                     let id = units.len();
                     let unit = Unit {
@@ -206,7 +163,7 @@ fn main() {
             }).fold(0, |acc, item| acc + item);
 
         let neighb = match p.neighborhood {
-            Some(n) => map.neighborhoods.get(&n).unwrap().desirability,
+            Some(n) => design.neighborhoods.get(&n).unwrap().desirability,
             _ => 0.
         };
         p.desirability = (1./park_dist * 10.) + neighb + (n_commercial as f32)/10.;
@@ -224,19 +181,19 @@ fn main() {
     for (pos, b) in city.buildings.iter() {
         for &u_id in b.units.iter() {
             let u = &mut city.units[u_id];
-            u.value = (map.city.price_to_rent_ratio * ((u.rent*12) as f32) * parcels[pos].desirability).round() as usize;
+            u.value = (design.city.price_to_rent_ratio * ((u.rent*12) as f32) * parcels[pos].desirability).round() as usize;
         }
     }
 
-    let mut landlords: Vec<Landlord> = (0..map.city.landlords)
-        .map(|i| Landlord::new(i as usize, map.neighborhoods.keys().cloned().collect())).collect();
+    let mut landlords: Vec<Landlord> = (0..design.city.landlords)
+        .map(|i| Landlord::new(i as usize, design.neighborhoods.keys().cloned().collect())).collect();
 
-    let income_dist = WeightedIndex::new(map.city.incomes.iter().map(|i| i.p)).unwrap();
+    let income_dist = WeightedIndex::new(design.city.incomes.iter().map(|i| i.p)).unwrap();
     let work_dist = WeightedIndex::new(commercial_weights).unwrap();
     let vacancies: Vec<usize> = city.units.iter().map(|u| u.id).collect();
-    let mut tenants: Vec<Tenant> = (0..map.city.population).map(|i| {
+    let mut tenants: Vec<Tenant> = (0..design.city.population).map(|i| {
         let tenant_id = i as usize;
-        let income_range = &map.city.incomes[income_dist.sample(&mut rng)];
+        let income_range = &design.city.incomes[income_dist.sample(&mut rng)];
         let income = rng.gen_range(income_range.low, income_range.high) as usize;
         let work_pos = commercial[work_dist.sample(&mut rng)];
 
@@ -302,7 +259,7 @@ fn main() {
     city.parcels = parcels;
 
     let mut doma = DOMA::new(DOMA_STARTING_FUNDS);
-    let synchronize = true;
+    let synchronize = false;
 
     println!("{:?} tenants", tenants.len());
 
@@ -310,7 +267,7 @@ fn main() {
     let mut pb = ProgressBar::new(steps);
     for step in 0..steps as usize {
         for landlord in &mut landlords {
-            landlord.step(&mut city, step, map.city.price_to_rent_ratio);
+            landlord.step(&mut city, step, design.city.price_to_rent_ratio);
         }
 
         let mut vacant_units: Vec<usize> = city.units.iter().filter(|u| u.vacancies() > 0).map(|u| u.id).collect();
@@ -322,10 +279,10 @@ fn main() {
 
         let mut transfers = Vec::new();
         for tenant in &mut tenants {
-            transfers.extend(tenant.check_purchase_offers(&mut city, map.city.price_to_rent_ratio));
+            transfers.extend(tenant.check_purchase_offers(&mut city, design.city.price_to_rent_ratio));
         }
         for landlord in &mut landlords {
-            transfers.extend(landlord.check_purchase_offers(&mut city, map.city.price_to_rent_ratio));
+            transfers.extend(landlord.check_purchase_offers(&mut city, design.city.price_to_rent_ratio));
         }
         for (landlord_typ, landlord_id, unit_id, amount) in transfers {
             match landlord_typ {
