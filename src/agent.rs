@@ -1,4 +1,6 @@
 use rand::Rng;
+use rand::rngs::StdRng;
+use super::config::{Config};
 use super::grid::{Position};
 use super::city::{City, Unit, Parcel};
 use std::cmp::{max, min};
@@ -8,19 +10,6 @@ use linreg::{linear_regression};
 use strum_macros::{Display};
 use rand::distributions::WeightedIndex;
 use rand::prelude::*;
-
-static MIN_AREA: f32 = 50.;
-static SAMPLE_SIZE: usize = 10;
-static TENANT_SAMPLE_SIZE: usize = 30;
-static TREND_MONTHS: usize = 12;
-static RENT_INCREASE_RATE: f32 = 1.05;
-static MOVING_PENALTY: f32 = 10.;
-static DOMA_P_RESERVES: f32 = 0.05;
-static DOMA_P_EXPENSES: f32 = 0.05;
-
-// Percent of rent paid to DOMA
-// that converts to shares
-static DOMA_P_RENT_SHARE: f32 = 0.1;
 
 fn distance(a: Position, b: Position) -> f64 {
     (((a.0 - b.0).pow(2) + (a.1 - b.1).pow(2)) as f64).sqrt()
@@ -45,11 +34,10 @@ pub struct Tenant {
 }
 
 impl Tenant {
-    pub fn step(&mut self, city: &mut City, month: usize, vacant_units: &mut Vec<usize>) {
+    pub fn step(&mut self, city: &mut City, month: usize, vacant_units: &mut Vec<usize>, rng: &mut StdRng, conf: &Config) {
         let mut reconsider;
         let mut current_desirability = 0.;
-        let mut moving_penalty = MOVING_PENALTY;
-        let mut rng = rand::thread_rng();
+        let mut moving_penalty = conf.moving_penalty;
 
         match self.unit {
             // If currently w/o home,
@@ -87,7 +75,7 @@ impl Tenant {
         }
         if reconsider && vacant_units.len() > 0 {
             let sample = vacant_units
-                .choose_multiple(&mut rng, TENANT_SAMPLE_SIZE);
+                .choose_multiple(rng, conf.tenant_sample_size);
             let (best_id, best_desirability) = sample.fold((0, 0.), |acc, &u_id| {
                 let u = &city.units[u_id];
                 let p = &city.parcels[&u.pos];
@@ -134,7 +122,7 @@ impl Tenant {
             0.
         } else {
             let ratio = (self.income as f32/rent_per_tenant as f32).sqrt();
-            let spaciousness = f32::max(unit.area as f32/n_tenants as f32 - MIN_AREA, 0.).powf(1./32.);
+            let spaciousness = f32::max(unit.area as f32/n_tenants as f32, 0.).powf(1./32.);
             let commute_distance = distance(self.work, unit.pos) as f32;
             let commute: f32 = if commute_distance == 0. {
                 1.
@@ -220,13 +208,12 @@ impl Landlord {
         }
     }
 
-    pub fn step(&mut self, city: &mut City, month: usize, price_to_rent_ratio: f32) {
+    pub fn step(&mut self, city: &mut City, month: usize, price_to_rent_ratio: f32, rng: &mut StdRng, conf: &Config) {
         // Update market estimates
-        self.estimate_rents(city);
-        self.estimate_trends();
+        self.estimate_rents(city, rng, conf.sample_size);
+        self.estimate_trends(conf.trend_months);
 
         // Maintenance
-        let mut rng = rand::thread_rng();
         for &u in &self.units {
             let mut unit = &mut city.units[u];
             let decay: f32 = rng.gen();
@@ -251,7 +238,7 @@ impl Landlord {
                     // TODO this can be smarter
                     // i.e. depend on gap b/w
                     // current rent and rent estimate/projection
-                    unit.rent = (unit.rent as f32 * RENT_INCREASE_RATE).ceil() as usize;
+                    unit.rent = (unit.rent as f32 * conf.rent_increase_rate).ceil() as usize;
                     // TODO u.maintenance -= 0.01
                 }
             }
@@ -262,14 +249,14 @@ impl Landlord {
         let neighbs: Vec<usize> = self.invest_ests.keys().cloned().collect();
         let neighb_weights: Vec<f32> = neighbs.iter().map(|neighb_id| f32::max(0., self.invest_ests[neighb_id])).collect();
         let neighb_id = if neighb_weights.iter().all(|&w| w == 0.) {
-            *neighbs.choose(&mut rng).unwrap()
+            *neighbs.choose(rng).unwrap()
         } else {
             let neighb_dist = WeightedIndex::new(&neighb_weights).unwrap();
-            neighbs[neighb_dist.sample(&mut rng)]
+            neighbs[neighb_dist.sample(rng)]
         };
         let est_future_rent = self.trend_ests[&neighb_id];
         let sample = city.units_by_neighborhood[&neighb_id]
-            .choose_multiple(&mut rng, SAMPLE_SIZE);
+            .choose_multiple(rng, conf.sample_size);
         for &u_id in sample {
             let unit = &mut city.units[u_id];
             let parcel = &city.parcels[&unit.pos];
@@ -280,8 +267,7 @@ impl Landlord {
         }
     }
 
-    fn estimate_rents(&mut self, city: &City) {
-        let mut rng = rand::thread_rng();
+    fn estimate_rents(&mut self, city: &City, rng: &mut StdRng, sample_size: usize) {
         let mut neighborhoods: HashMap<usize, Vec<f32>> = HashMap::new();
         for &u in &self.units {
             let unit = &city.units[u];
@@ -300,7 +286,7 @@ impl Landlord {
         for (&neighb_id, rent_history) in &mut self.rent_obvs {
             let n = neighborhoods.entry(neighb_id).or_insert(Vec::new());
             let sample = city.units_by_neighborhood[&neighb_id]
-                .choose_multiple(&mut rng, SAMPLE_SIZE)
+                .choose_multiple(rng, sample_size)
                 .map(|&u_id| city.units[u_id].rent_per_area());
             n.extend(sample);
             let max_rent = n.iter().cloned().fold(-1., f32::max);
@@ -308,13 +294,13 @@ impl Landlord {
         }
     }
 
-    fn estimate_trends(&mut self) {
+    fn estimate_trends(&mut self, trend_months: usize) {
         for (&neighb_id, rent_history) in &self.rent_obvs {
-            if rent_history.len() >= TREND_MONTHS {
-                let ys = &rent_history[rent_history.len() - TREND_MONTHS..];
+            if rent_history.len() >= trend_months {
+                let ys = &rent_history[rent_history.len() - trend_months..];
                 let xs: Vec<f32> = (0..ys.len()).map(|v| v as f32).collect();
                 let (slope, intercept): (f32, f32) = linear_regression(&xs, &ys).unwrap();
-                let est_market_rent = (TREND_MONTHS as f32) * slope + intercept;
+                let est_market_rent = (trend_months as f32) * slope + intercept;
                 self.trend_ests.insert(neighb_id, est_market_rent);
                 self.invest_ests.insert(neighb_id, est_market_rent - ys.last().unwrap());
             } else {
@@ -370,23 +356,30 @@ impl Landlord {
 pub struct DOMA {
     pub funds: i32,
     pub shares: HashMap<usize, f32>,
+    pub units: Vec<usize>,
     maintenance: f32,
-    pub units: Vec<usize>
+
+    // Percent of rent paid to DOMA
+    // that converts to shares
+    p_rent_share: f32,
+    p_reserves: f32,
+    p_expenses: f32
 }
 
 impl DOMA {
-    pub fn new(funds: i32) -> DOMA {
+    pub fn new(funds: i32, p_rent_share: f32, p_reserves: f32, p_expenses: f32) -> DOMA {
         DOMA {
             funds: funds,
             shares: HashMap::new(),
             maintenance: 1.,
-            units: Vec::new()
+            units: Vec::new(),
+            p_rent_share: p_rent_share,
+            p_reserves: p_reserves,
+            p_expenses: p_expenses
         }
     }
 
-    pub fn step(&mut self, city: &mut City, tenants: &mut Vec<Tenant>) {
-        let mut rng = rand::thread_rng();
-
+    pub fn step(&mut self, city: &mut City, tenants: &mut Vec<Tenant>, rng: &mut StdRng) {
         // Collect rent
         let mut rent = 0;
         for &u_id in &self.units {
@@ -403,7 +396,7 @@ impl DOMA {
                 let rent_per_tenant = rent as f32/unit.tenants.len() as f32;
                 for &t in &unit.tenants {
                     let share = self.shares.entry(t).or_insert(0.);
-                    *share += rent_per_tenant * DOMA_P_RENT_SHARE;
+                    *share += rent_per_tenant * self.p_rent_share;
                 }
             } else {
                 continue
@@ -411,13 +404,13 @@ impl DOMA {
         }
 
         // Pay dividends
-        let p_dividend = 1.0 - DOMA_P_RESERVES - DOMA_P_EXPENSES;
+        let p_dividend = 1.0 - self.p_reserves - self.p_expenses;
         let dividends = rent as f32 * p_dividend;
         for (&tenant_id, share) in &self.shares {
             let tenant = &mut tenants[tenant_id];
             tenant.last_dividend = (dividends * share).round() as usize;
         }
-        self.funds += (rent as f32 * DOMA_P_RESERVES).round() as i32;
+        self.funds += (rent as f32 * self.p_reserves).round() as i32;
 
         // TODO selling of properties
 

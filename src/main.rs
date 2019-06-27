@@ -1,6 +1,7 @@
 extern crate rand;
 extern crate serde;
 extern crate serde_json;
+extern crate serde_yaml;
 extern crate noise;
 extern crate redis;
 extern crate md5;
@@ -12,28 +13,29 @@ mod agent;
 mod sync;
 mod stats;
 mod design;
+mod config;
 use self::city::{City, Unit, Building, Parcel, ParcelType};
 use self::grid::{Position};
 use self::agent::{Landlord, Tenant, DOMA, AgentType};
 use std::str::FromStr;
 use std::collections::{HashMap, HashSet};
-use rand::Rng;
+use rand::{Rng, SeedableRng};
+use rand::rngs::StdRng;
 use std::cmp::{max};
 use rand::prelude::*;
 use rand::distributions::WeightedIndex;
 use rand::seq::SliceRandom;
-use noise::{OpenSimplex, NoiseFn};
+use noise::{OpenSimplex, Seedable, NoiseFn};
 use pbr::ProgressBar;
 use std::fs;
 use serde_json::json;
 
-static DOMA_STARTING_FUNDS: i32 = 2e6 as i32;
-static DESIRABILITY_STRETCH_FACTOR: f64 = 72.;
-static BASE_APPRECIATION: f32 = 1.02;
 
 fn main() {
     let design_id = "philadelphia";
     let mut design = design::load_design(design_id);
+
+    let conf = config::load_config();
 
     let rows = design.map.layout.len();
     let cols = design.map.layout[0].len();
@@ -63,7 +65,7 @@ fn main() {
         }
     }
 
-    let mut rng = rand::thread_rng();
+    let mut rng: StdRng = SeedableRng::seed_from_u64(conf.seed);
     let mut units = Vec::new();
     let mut buildings = HashMap::new();
     let mut commercial = Vec::new();
@@ -73,7 +75,9 @@ fn main() {
     // and create neighborhood desirability trends
     let mut neighborhood_trends: HashMap<usize, OpenSimplex> = HashMap::new();
     for &id in design.neighborhoods.keys() {
-        neighborhood_trends.insert(id, OpenSimplex::new());
+        let mut noise = OpenSimplex::new();
+        noise = noise.set_seed(rng.gen());
+        neighborhood_trends.insert(id, noise);
         city.units_by_neighborhood.insert(id, Vec::new());
     }
     let mut nei_des_min = 1./0.;
@@ -285,15 +289,15 @@ fn main() {
     }
     city.parcels = parcels;
 
-    let mut doma = DOMA::new(DOMA_STARTING_FUNDS);
+    let mut doma = DOMA::new(conf.doma_starting_funds, conf.doma_p_rent_share,
+                             conf.doma_p_reserves, conf.doma_p_expenses);
     let synchronize = false;
 
     println!("{:?} tenants", tenants.len());
 
-    let steps = 600;
     let mut history = Vec::new();
-    let mut pb = ProgressBar::new(steps);
-    for step in 0..steps as usize {
+    let mut pb = ProgressBar::new(conf.steps as u64);
+    for step in 0..conf.steps {
         let mut transfers = Vec::new();
         for tenant in &mut tenants {
             transfers.extend(tenant.check_purchase_offers(&mut city, design.city.price_to_rent_ratio));
@@ -309,6 +313,7 @@ fn main() {
                 },
                 AgentType::DOMA => {
                     doma.units.push(unit_id);
+                    println!("{:?}/{:?}", amount, doma.funds);
                     doma.funds -= amount as i32;
                 },
                 _ => {}
@@ -316,12 +321,12 @@ fn main() {
         }
 
         for landlord in &mut landlords {
-            landlord.step(&mut city, step, design.city.price_to_rent_ratio);
+            landlord.step(&mut city, step, design.city.price_to_rent_ratio, &mut rng, &conf);
         }
 
         let mut vacant_units: Vec<usize> = city.units.iter().filter(|u| u.vacancies() > 0).map(|u| u.id).collect();
         for tenant in &mut tenants {
-            tenant.step(&mut city, step, &mut vacant_units);
+            tenant.step(&mut city, step, &mut vacant_units, &mut rng, &conf);
         }
 
         if step % 12 == 0 {
@@ -331,11 +336,11 @@ fn main() {
                 let sold: Vec<&Unit> = units.iter().filter(|u| u.recently_sold).cloned().collect();
                 let mean_value_per_area = if sold.len() == 0 {
                     units.iter().fold(0., |acc, u| {
-                        acc + (u.value_per_area() * BASE_APPRECIATION)
+                        acc + (u.value_per_area() * conf.base_appreciation)
                     })/units.len() as f32
                 } else {
                     sold.iter().fold(0., |acc, u| {
-                        acc + (u.value_per_area() * BASE_APPRECIATION)
+                        acc + (u.value_per_area() * conf.base_appreciation)
                     })/sold.len() as f32
                 };
 
@@ -349,16 +354,16 @@ fn main() {
             }
         }
 
-        doma.step(&mut city, &mut tenants);
+        doma.step(&mut city, &mut tenants, &mut rng);
 
         // Desirability changes, random walk
         for (neighb_id, parcel_ids) in &city.residential_parcels_by_neighborhood {
             let last_val = if step > 0 {
-                neighborhood_trends[neighb_id].get([(step - 1) as f64/DESIRABILITY_STRETCH_FACTOR, 0.])
+                neighborhood_trends[neighb_id].get([(step - 1) as f64/conf.desirability_stretch_factor, 0.])
             } else {
                 0.
             };
-            let val = neighborhood_trends[neighb_id].get([step as f64/DESIRABILITY_STRETCH_FACTOR, 0.]);
+            let val = neighborhood_trends[neighb_id].get([step as f64/conf.desirability_stretch_factor, 0.]);
             let change = (val - last_val) as f32;
             for p in parcel_ids {
                 let parcel = city.parcels.get_mut(p).unwrap();
@@ -369,18 +374,23 @@ fn main() {
         if synchronize {
             sync::sync(step, &city).unwrap();
         }
-        history.push(stats::stats(&city, &tenants, &landlords, &doma));
+        if conf.debug {
+            history.push(stats::stats(&city, &tenants, &landlords, &doma));
+        }
         pb.inc();
     }
-    let results = json!({
-        "history": history,
-        "meta": {
-            // 'seed': SEED, // TODO
-            "design": design_id,
-            "tenants": tenants.len(),
-            "units": city.units.len(),
-            "occupancy": city.units.iter().fold(0, |acc, u| acc + u.occupancy)
-        }
-    }).to_string();
-    fs::write("output.json", results).expect("Unable to write file");
+
+    if conf.debug {
+        let results = json!({
+            "history": history,
+            "meta": {
+                "seed": conf.seed,
+                "design": design_id,
+                "tenants": tenants.len(),
+                "units": city.units.len(),
+                "occupancy": city.units.iter().fold(0, |acc, u| acc + u.occupancy)
+            }
+        }).to_string();
+        fs::write("output.json", results).expect("Unable to write file");
+    }
 }

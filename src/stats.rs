@@ -63,11 +63,6 @@ pub fn stats(city: &City, tenants: &Vec<Tenant>, landlords: &Vec<Landlord>, doma
 
             let mut rent_discount = 0;
             let rent_per_tenant = unit.rent as f32/unit.tenants.len() as f32;
-            if unit.tenants.len() > 0 {
-                // println!("rent: {:?}", unit.rent);
-                // println!("rent per tenant: {:?}", rent_per_tenant);
-                // println!("tenants: {:?}", unit.tenants.len());
-            }
             for &t_id in &unit.tenants {
                 let tenant = &tenants[t_id];
                 rent_discount += tenant.last_dividend;
@@ -140,9 +135,6 @@ pub fn stats(city: &City, tenants: &Vec<Tenant>, landlords: &Vec<Landlord>, doma
         "mean_condition": doma_data.0/doma.units.len() as f32,
         "mean_adjusted_rent_per_area": doma_data.1/doma.units.len() as f32
     }));
-
-    println!("N HOUSED {:?}", n_housed);
-    println!("TENANTS {:?}", tenants.len());
 
     json!({
         "percent_homeless": 1. - n_housed/tenants.len() as f32,

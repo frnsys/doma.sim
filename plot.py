@@ -1,5 +1,6 @@
 import os
 import json
+import yaml
 import matplotlib.pyplot as plt
 from collections import defaultdict
 from datetime import datetime
@@ -12,9 +13,7 @@ def make_plots(output_dir):
     history = output['history']
     stats = defaultdict(list)
 
-    # config = json.load(open(os.path.join(output_dir, 'config.json')))
-    # config.pop('map')
-    config = {}
+    config = yaml.load(open(os.path.join(output_dir, 'config.yaml')))
 
     # Get neighborhood-specific stats
     by_neighb = [h.pop('neighborhoods') for h in history]
@@ -102,8 +101,8 @@ def make_plots(output_dir):
             <body style="font-family:monospace;">
                 <h3>Generated on {dt}</h3>
                 <div>
-                    {meta}
-                    {config}
+                    <div>{meta}</div>
+                    <div>{config}</div>
                 </div>
                 <div>
                     {imgs}
