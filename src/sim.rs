@@ -1,11 +1,11 @@
+use super::agent::{AgentType, Landlord, Tenant, DOMA};
 use super::city::{City, Unit};
-use super::agent::{AgentType, Tenant, Landlord, DOMA};
-use super::design::Design;
 use super::config::Config;
+use super::design::Design;
+use noise::NoiseFn;
+use rand::distributions::WeightedIndex;
 use rand::prelude::*;
 use rand::rngs::StdRng;
-use rand::distributions::WeightedIndex;
-use noise::NoiseFn;
 
 pub struct Simulation {
     pub city: City,
@@ -13,7 +13,7 @@ pub struct Simulation {
     pub tenants: Vec<Tenant>,
     pub landlords: Vec<Landlord>,
     design: Design,
-    config: Config
+    config: Config,
 }
 
 impl Simulation {
@@ -23,7 +23,8 @@ impl Simulation {
 
         // Create landlords
         let mut landlords: Vec<Landlord> = (0..design.city.landlords)
-            .map(|i| Landlord::new(i as usize, design.neighborhoods.keys().cloned().collect())).collect();
+            .map(|i| Landlord::new(i as usize, design.neighborhoods.keys().cloned().collect()))
+            .collect();
 
         // Create tenants
         let income_dist = WeightedIndex::new(design.city.incomes.iter().map(|i| i.p)).unwrap();
@@ -36,47 +37,49 @@ impl Simulation {
         let work_dist = WeightedIndex::new(commercial_weights).unwrap();
         let vacancies: Vec<usize> = city.units.iter().map(|u| u.id).collect();
         // let mut tenants: Vec<Tenant> = (0..design.city.population).map(|i| {
-        let mut tenants: Vec<Tenant> = (0..75000).map(|i| {
-            let tenant_id = i as usize;
-            let income_range = &design.city.incomes[income_dist.sample(&mut rng)];
-            let income = rng.gen_range(income_range.low, income_range.high) as f32;
-            let work_pos = commercial[work_dist.sample(&mut rng)];
+        let mut tenants: Vec<Tenant> = (0..75000)
+            .map(|i| {
+                let tenant_id = i as usize;
+                let income_range = &design.city.incomes[income_dist.sample(&mut rng)];
+                let income = rng.gen_range(income_range.low, income_range.high) as f32;
+                let work_pos = commercial[work_dist.sample(&mut rng)];
 
-            let mut tenant = Tenant {
-                id: tenant_id,
-                unit: None,
-                units: Vec::new(),
-                income: income,
-                work: work_pos,
-                last_dividend: 0.
-            };
+                let mut tenant = Tenant {
+                    id: tenant_id,
+                    unit: None,
+                    units: Vec::new(),
+                    income: income,
+                    work: work_pos,
+                    last_dividend: 0.,
+                };
 
-            let lease_month = rng.gen_range(0, 11) as usize;
-            let (best_id, best_desirability) = vacancies.iter().fold((0, 0.), |acc, &u_id| {
-                let u = &city.units[u_id];
-                let p = &city.parcels[&u.pos];
-                if u.vacancies() <= 0 {
-                    acc
-                } else {
-                    let desirability = tenant.desirability(u, p);
-                    if desirability > acc.1 {
-                        (u_id, desirability)
-                    } else {
+                let lease_month = rng.gen_range(0, 11) as usize;
+                let (best_id, best_desirability) = vacancies.iter().fold((0, 0.), |acc, &u_id| {
+                    let u = &city.units[u_id];
+                    let p = &city.parcels[&u.pos];
+                    if u.vacancies() <= 0 {
                         acc
+                    } else {
+                        let desirability = tenant.desirability(u, p);
+                        if desirability > acc.1 {
+                            (u_id, desirability)
+                        } else {
+                            acc
+                        }
                     }
-                }
-            });
-            tenant.unit = if best_desirability > 0. {
-                let u = &mut city.units[best_id];
-                u.tenants.insert(tenant_id);
-                u.lease_month = lease_month;
-                Some(best_id)
-            } else {
-                None
-            };
+                });
+                tenant.unit = if best_desirability > 0. {
+                    let u = &mut city.units[best_id];
+                    u.tenants.insert(tenant_id);
+                    u.lease_month = lease_month;
+                    Some(best_id)
+                } else {
+                    None
+                };
 
-            tenant
-        }).collect();
+                tenant
+            })
+            .collect();
 
         // Distribute ownership of units
         for (_, b) in city.buildings.iter() {
@@ -112,8 +115,12 @@ impl Simulation {
             }
         }
 
-        let doma = DOMA::new(config.doma_starting_funds, config.doma_p_rent_share,
-                                config.doma_p_reserves, config.doma_p_expenses);
+        let doma = DOMA::new(
+            config.doma_starting_funds,
+            config.doma_p_rent_share,
+            config.doma_p_reserves,
+            config.doma_p_expenses,
+        );
 
         Simulation {
             city: city,
@@ -121,54 +128,80 @@ impl Simulation {
             tenants: tenants,
             doma: doma,
             design: design,
-            config: config
+            config: config,
         }
     }
 
     pub fn step(&mut self, time: usize, mut rng: &mut StdRng) {
         let mut transfers = Vec::new();
         for tenant in &mut self.tenants {
-            transfers.extend(tenant.check_purchase_offers(&mut self.city, self.design.city.price_to_rent_ratio));
+            transfers.extend(
+                tenant.check_purchase_offers(&mut self.city, self.design.city.price_to_rent_ratio),
+            );
         }
         for landlord in &mut self.landlords {
-            transfers.extend(landlord.check_purchase_offers(&mut self.city, self.design.city.price_to_rent_ratio));
+            transfers.extend(
+                landlord
+                    .check_purchase_offers(&mut self.city, self.design.city.price_to_rent_ratio),
+            );
         }
         for (landlord_typ, landlord_id, unit_id, amount) in transfers {
             match landlord_typ {
                 AgentType::Landlord => {
                     let landlord = &mut self.landlords[landlord_id];
                     landlord.units.push(unit_id);
-                },
+                }
                 AgentType::DOMA => {
                     self.doma.units.push(unit_id);
                     self.doma.funds -= amount;
-                },
+                }
                 _ => {}
             }
         }
 
         for landlord in &mut self.landlords {
-            landlord.step(&mut self.city, time, self.design.city.price_to_rent_ratio, &mut rng, &self.config);
+            landlord.step(
+                &mut self.city,
+                time,
+                self.design.city.price_to_rent_ratio,
+                &mut rng,
+                &self.config,
+            );
         }
 
-        let mut vacant_units: Vec<usize> = self.city.units.iter().filter(|u| u.vacancies() > 0).map(|u| u.id).collect();
+        let mut vacant_units: Vec<usize> = self
+            .city
+            .units
+            .iter()
+            .filter(|u| u.vacancies() > 0)
+            .map(|u| u.id)
+            .collect();
         for tenant in &mut self.tenants {
-            tenant.step(&mut self.city, time, &mut vacant_units, &mut rng, &self.config);
+            tenant.step(
+                &mut self.city,
+                time,
+                &mut vacant_units,
+                &mut rng,
+                &self.config,
+            );
         }
 
         if time % 12 == 0 {
             // Appraise
             for (_, unit_ids) in &self.city.units_by_neighborhood {
-                let units: Vec<&Unit> = unit_ids.iter().map(|&u_id| &self.city.units[u_id]).collect();
+                let units: Vec<&Unit> = unit_ids
+                    .iter()
+                    .map(|&u_id| &self.city.units[u_id])
+                    .collect();
                 let sold: Vec<&Unit> = units.iter().filter(|u| u.recently_sold).cloned().collect();
                 let mean_value_per_area = if sold.len() == 0 {
                     units.iter().fold(0., |acc, u| {
                         acc + (u.value_per_area() * self.config.base_appreciation)
-                    })/units.len() as f32
+                    }) / units.len() as f32
                 } else {
                     sold.iter().fold(0., |acc, u| {
                         acc + (u.value_per_area() * self.config.base_appreciation)
-                    })/sold.len() as f32
+                    }) / sold.len() as f32
                 };
 
                 for &u_id in unit_ids {
@@ -186,13 +219,15 @@ impl Simulation {
         // Desirability changes, random walk
         for (neighb_id, parcel_ids) in &self.city.residential_parcels_by_neighborhood {
             let last_val = if time > 0 {
-                self.city.neighborhood_trends[neighb_id].get(
-                    [(time - 1) as f64/self.config.desirability_stretch_factor, 0.])
+                self.city.neighborhood_trends[neighb_id].get([
+                    (time - 1) as f64 / self.config.desirability_stretch_factor,
+                    0.,
+                ])
             } else {
                 0.
             };
-            let val = self.city.neighborhood_trends[neighb_id].get(
-                [time as f64/self.config.desirability_stretch_factor, 0.]);
+            let val = self.city.neighborhood_trends[neighb_id]
+                .get([time as f64 / self.config.desirability_stretch_factor, 0.]);
             let change = (val - last_val) as f32;
             for p in parcel_ids {
                 let parcel = self.city.parcels.get_mut(p).unwrap();

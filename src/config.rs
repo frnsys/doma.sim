@@ -1,8 +1,8 @@
+use rand::Rng;
+use serde::Deserialize;
 use std::env;
 use std::fs::File;
 use std::io::BufReader;
-use serde::{Deserialize};
-use rand::Rng;
 
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "UPPERCASE")]
@@ -29,7 +29,7 @@ pub struct Config {
     pub sync: bool,
 
     #[serde(default)]
-    pub seed: u64
+    pub seed: u64,
 }
 
 pub fn load_config() -> Config {
@@ -39,23 +39,23 @@ pub fn load_config() -> Config {
 
     conf.steps = match env::var("STEPS") {
         Ok(steps) => steps.parse().unwrap(),
-        Err(_) => 100
+        Err(_) => 100,
     };
 
     conf.debug = match env::var("DEBUG") {
         Ok(debug) => debug == "1",
-        Err(_) => false
+        Err(_) => false,
     };
 
     conf.sync = match env::var("SYNC") {
         Ok(sync) => sync == "1",
-        Err(_) => true
+        Err(_) => true,
     };
 
     let mut rng = rand::thread_rng();
     conf.seed = match env::var("SEED") {
         Ok(seed) => seed.parse().unwrap(),
-        Err(_) => rng.gen()
+        Err(_) => rng.gen(),
     };
 
     println!("{:?}", conf);

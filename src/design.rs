@@ -1,12 +1,12 @@
-use redis::Commands;
-use serde::{Deserialize};
 use fnv::FnvHashMap;
+use redis::Commands;
+use serde::Deserialize;
 
 #[derive(Deserialize, Debug)]
 pub struct Design {
     pub map: Map,
     pub neighborhoods: FnvHashMap<usize, Neighborhood>,
-    pub city: CityConfig
+    pub city: CityConfig,
 }
 
 #[derive(Deserialize, Debug)]
@@ -18,14 +18,14 @@ pub struct Neighborhood {
     pub min_area: u32,
     pub max_area: u32,
     pub sqm_per_occupant: u32,
-    pub p_commercial: f32
+    pub p_commercial: f32,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct IncomeRange {
     pub high: usize,
     pub low: usize,
-    pub p: f32
+    pub p: f32,
 }
 
 #[derive(Deserialize, Debug)]
@@ -35,14 +35,13 @@ pub struct CityConfig {
     pub price_to_rent_ratio: f32,
     pub landlords: u32,
     pub population: u32,
-    pub incomes: Vec<IncomeRange>
+    pub incomes: Vec<IncomeRange>,
 }
 
 #[derive(Deserialize, Debug)]
 pub struct Map {
-    pub layout: Vec<Vec<Option<String>>>
+    pub layout: Vec<Vec<Option<String>>>,
 }
-
 
 pub fn load_design(design_id: &str) -> Design {
     let client = redis::Client::open("redis://127.0.0.1/1").unwrap();

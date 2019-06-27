@@ -1,31 +1,31 @@
+extern crate chrono;
+extern crate md5;
+extern crate noise;
+extern crate pbr;
 extern crate rand;
+extern crate redis;
 extern crate serde;
 extern crate serde_json;
 extern crate serde_yaml;
-extern crate noise;
-extern crate redis;
-extern crate md5;
-extern crate pbr;
-extern crate chrono;
 
-mod grid;
-mod city;
 mod agent;
-mod sync;
-mod stats;
-mod design;
+mod city;
 mod config;
+mod design;
+mod grid;
 mod play;
 mod sim;
+mod stats;
+mod sync;
 use self::sim::Simulation;
-use rand::SeedableRng;
-use rand::rngs::StdRng;
-use pbr::ProgressBar;
-use std::fs;
-use std::path::Path;
-use std::os::unix::fs::symlink;
-use serde_json::json;
 use chrono::prelude::*;
+use pbr::ProgressBar;
+use rand::rngs::StdRng;
+use rand::SeedableRng;
+use serde_json::json;
+use std::fs;
+use std::os::unix::fs::symlink;
+use std::path::Path;
 
 fn main() {
     let design_id = "philadelphia";
@@ -70,7 +70,8 @@ fn main() {
                 "units": sim.city.units.len(),
                 "occupancy": sim.city.units.iter().fold(0, |acc, u| acc + u.occupancy)
             }
-        }).to_string();
+        })
+        .to_string();
 
         let dir = format!("runs/{}", now_str);
         let fname = format!("runs/{}/output.json", now_str);

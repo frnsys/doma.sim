@@ -1,7 +1,7 @@
+use super::city::City;
+use md5::Digest;
 use redis::Commands;
-use super::city::{City};
 use serde_json::{json, Value};
-use md5::{Digest};
 use std::collections::HashMap;
 
 pub fn jsonify(month: usize, city: &City) -> Value {
@@ -11,35 +11,44 @@ pub fn jsonify(month: usize, city: &City) -> Value {
 
     for (pos, parcel) in &city.parcels {
         let g = parcels.entry(pos.0).or_insert(HashMap::new());
-        g.insert(pos.1, json!({
-            "neighb": match parcel.neighborhood {
-                Some(neighb_id) => neighb_id as i32,
-                None => -1
-            },
-            "type": parcel.typ.to_string(),
-            "desirability": parcel.desirability
-        }));
+        g.insert(
+            pos.1,
+            json!({
+                "neighb": match parcel.neighborhood {
+                    Some(neighb_id) => neighb_id as i32,
+                    None => -1
+                },
+                "type": parcel.typ.to_string(),
+                "desirability": parcel.desirability
+            }),
+        );
         match &city.buildings.get(pos) {
             None => continue,
             Some(building) => {
                 let id = format!("{}_{}", pos.0, pos.1);
-                buildings.insert(id, json!({
-                    "units": building.units,
-                    "nCommercial": building.n_commercial
-                }));
+                buildings.insert(
+                    id,
+                    json!({
+                        "units": building.units,
+                        "nCommercial": building.n_commercial
+                    }),
+                );
                 for &u in &building.units {
                     let unit = &city.units[u];
-                    units.insert(u, json!({
-                        "id": u,
-                        "rent": unit.rent,
-                        "tenants": unit.tenants.len(),
-                        "occupancy": unit.occupancy,
-                        "owner": json!({
-                            "id": unit.owner.1,
-                            "type": unit.owner.0.to_string()
+                    units.insert(
+                        u,
+                        json!({
+                            "id": u,
+                            "rent": unit.rent,
+                            "tenants": unit.tenants.len(),
+                            "occupancy": unit.occupancy,
+                            "owner": json!({
+                                "id": unit.owner.1,
+                                "type": unit.owner.0.to_string()
+                            }),
+                            "monthsVacant": unit.months_vacant
                         }),
-                        "monthsVacant": unit.months_vacant
-                    }));
+                    );
                 }
             }
         }
@@ -70,4 +79,3 @@ pub fn sync(month: usize, city: &City) -> redis::RedisResult<()> {
 
     Ok(())
 }
-

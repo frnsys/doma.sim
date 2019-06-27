@@ -1,6 +1,6 @@
-use serde_json::{json, Value};
-use super::sim::Simulation;
 use super::agent::AgentType;
+use super::sim::Simulation;
+use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 
 pub fn stats(sim: &Simulation) -> Value {
@@ -17,7 +17,7 @@ pub fn stats(sim: &Simulation) -> Value {
     let mut mean_rent_income_ratio = 0.;
     let mut mean_offers = 0.;
     let mut mean_value = 0.;
-    let mut min_value = 1./0.;
+    let mut min_value = 1. / 0.;
     let mut mean_desirability = 0.;
     let mut unique_landlords = HashSet::new();
     let mut landlord_data = HashMap::new();
@@ -26,7 +26,7 @@ pub fn stats(sim: &Simulation) -> Value {
     let mut neighborhood_stats = HashMap::new();
     for (neighb_id, unit_ids) in &sim.city.units_by_neighborhood {
         if unit_ids.len() == 0 {
-            continue
+            continue;
         }
 
         let mut nei_n_doma = 0;
@@ -44,13 +44,13 @@ pub fn stats(sim: &Simulation) -> Value {
             mean_offers += unit.offers.len() as f32;
             nei_mean_rent_per_area += unit.rent_per_area();
             nei_mean_months_vacant += unit.months_vacant as f32;
-            nei_mean_value_per_area += value/unit.area;
+            nei_mean_value_per_area += value / unit.area;
             mean_value += value;
             mean_condition += unit.condition;
             mean_price_to_rent_ratio += if unit.rent == 0. {
                 0.
             } else {
-                value/(unit.rent*12.)
+                value / (unit.rent * 12.)
             };
             if value < min_value {
                 min_value = value;
@@ -61,13 +61,14 @@ pub fn stats(sim: &Simulation) -> Value {
             }
 
             let mut rent_discount = 0.;
-            let rent_per_tenant = unit.rent/unit.tenants.len() as f32;
+            let rent_per_tenant = unit.rent / unit.tenants.len() as f32;
             for &t_id in &unit.tenants {
                 let tenant = &sim.tenants[t_id];
                 rent_discount += tenant.last_dividend;
-                nei_mean_rent_income_ratio += rent_per_tenant/tenant.income;
+                nei_mean_rent_income_ratio += rent_per_tenant / tenant.income;
             }
-            nei_mean_adjusted_rent_per_area += f32::max(0., unit.rent - f32::min(unit.rent, rent_discount))/unit.area;
+            nei_mean_adjusted_rent_per_area +=
+                f32::max(0., unit.rent - f32::min(unit.rent, rent_discount)) / unit.area;
             n_housed += unit.tenants.len() as f32;
             nei_n_tenants += unit.tenants.len();
 
@@ -77,12 +78,12 @@ pub fn stats(sim: &Simulation) -> Value {
                     let data = landlord_data.entry(unit.owner.1).or_insert((0., 0.));
                     data.0 += unit.condition;
                     data.1 += mean_adjusted_rent_per_area;
-                },
+                }
                 AgentType::DOMA => {
                     doma_data.0 += unit.condition;
                     doma_data.1 += mean_adjusted_rent_per_area;
                     nei_n_doma += 1;
-                },
+                }
                 _ => {}
             }
         }
@@ -90,22 +91,25 @@ pub fn stats(sim: &Simulation) -> Value {
         let nei_n_units = unit_ids.len() as f32;
         let parcels = &sim.city.residential_parcels_by_neighborhood[neighb_id];
         n_parcels += parcels.len() as f32;
-        let nei_mean_desirability = parcels.iter().fold(0., |acc, pos| {
-            acc + sim.city.parcels[pos].desirability
-        });
+        let nei_mean_desirability = parcels
+            .iter()
+            .fold(0., |acc, pos| acc + sim.city.parcels[pos].desirability);
 
-        neighborhood_stats.insert(neighb_id, json!({
-            "percent_vacant": nei_n_vacant/nei_n_units,
-            "mean_rent_per_area": nei_mean_rent_per_area/nei_n_units,
-            "mean_adjusted_rent_per_area": nei_mean_adjusted_rent_per_area/nei_n_units,
-            "mean_value_per_area": nei_mean_value_per_area/nei_n_units,
-            "mean_months_vacant": nei_mean_months_vacant/nei_n_units,
-            "mean_rent_income_ratio": if nei_n_tenants > 0 {
-                nei_mean_rent_income_ratio/nei_n_tenants as f32
-            } else { 0. },
-            "mean_desirability": nei_mean_desirability/parcels.len() as f32,
-            "doma_units": nei_n_doma
-        }));
+        neighborhood_stats.insert(
+            neighb_id,
+            json!({
+                "percent_vacant": nei_n_vacant/nei_n_units,
+                "mean_rent_per_area": nei_mean_rent_per_area/nei_n_units,
+                "mean_adjusted_rent_per_area": nei_mean_adjusted_rent_per_area/nei_n_units,
+                "mean_value_per_area": nei_mean_value_per_area/nei_n_units,
+                "mean_months_vacant": nei_mean_months_vacant/nei_n_units,
+                "mean_rent_income_ratio": if nei_n_tenants > 0 {
+                    nei_mean_rent_income_ratio/nei_n_tenants as f32
+                } else { 0. },
+                "mean_desirability": nei_mean_desirability/parcels.len() as f32,
+                "doma_units": nei_n_doma
+            }),
+        );
 
         n_vacant += nei_n_vacant;
         mean_rent_per_area += nei_mean_rent_per_area;
@@ -114,29 +118,34 @@ pub fn stats(sim: &Simulation) -> Value {
         mean_months_vacant += nei_mean_months_vacant;
         mean_rent_income_ratio += nei_mean_rent_income_ratio;
         mean_desirability += nei_mean_desirability;
-
     }
 
     let mut landlord_stats = HashMap::new();
     for landlord in &sim.landlords {
         let data = landlord_data.entry(landlord.id).or_insert((0., 0.));
         let l_n_units = landlord.units.len() as f32;
-        landlord_stats.insert(landlord.id as i32, json!({
-            "n_units": l_n_units,
-            "p_units": l_n_units/n_units,
-            "mean_condition": data.0/l_n_units,
-            "mean_adjusted_rent_per_area": data.1/l_n_units
-        }));
+        landlord_stats.insert(
+            landlord.id as i32,
+            json!({
+                "n_units": l_n_units,
+                "p_units": l_n_units/n_units,
+                "mean_condition": data.0/l_n_units,
+                "mean_adjusted_rent_per_area": data.1/l_n_units
+            }),
+        );
     }
 
     // DOMA special id of -1
     let n_doma_units = sim.doma.units.len() as f32;
-    landlord_stats.insert(-1, json!({
-        "n_units": n_doma_units,
-        "p_units": n_doma_units/n_units,
-        "mean_condition": doma_data.0/n_doma_units,
-        "mean_adjusted_rent_per_area": doma_data.1/n_doma_units
-    }));
+    landlord_stats.insert(
+        -1,
+        json!({
+            "n_units": n_doma_units,
+            "p_units": n_doma_units/n_units,
+            "mean_condition": doma_data.0/n_doma_units,
+            "mean_adjusted_rent_per_area": doma_data.1/n_doma_units
+        }),
+    );
 
     json!({
         "percent_homeless": 1. - n_housed/sim.tenants.len() as f32,
