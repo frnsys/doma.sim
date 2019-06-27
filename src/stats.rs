@@ -1,11 +1,11 @@
 use serde_json::{json, Value};
-use super::agent::{Landlord, Tenant, DOMA, AgentType};
-use super::city::City;
+use super::sim::Simulation;
+use super::agent::AgentType;
 use std::cmp::{max, min};
 use std::collections::{HashMap, HashSet};
 
-pub fn stats(city: &City, tenants: &Vec<Tenant>, landlords: &Vec<Landlord>, doma: &DOMA) -> Value {
-    let n_units = city.units.len() as f32;
+pub fn stats(sim: &Simulation) -> Value {
+    let n_units = sim.city.units.len() as f32;
     let mut n_housed = 0.;
     let mut n_vacant = 0.;
     let mut n_parcels = 0.;
@@ -25,7 +25,7 @@ pub fn stats(city: &City, tenants: &Vec<Tenant>, landlords: &Vec<Landlord>, doma
     let mut doma_data = (0., 0.);
 
     let mut neighborhood_stats = HashMap::new();
-    for (neighb_id, unit_ids) in &city.units_by_neighborhood {
+    for (neighb_id, unit_ids) in &sim.city.units_by_neighborhood {
         if unit_ids.len() == 0 {
             continue
         }
@@ -40,7 +40,7 @@ pub fn stats(city: &City, tenants: &Vec<Tenant>, landlords: &Vec<Landlord>, doma
         let mut nei_mean_rent_income_ratio = 0.;
 
         for &unit_id in unit_ids {
-            let unit = &city.units[unit_id];
+            let unit = &sim.city.units[unit_id];
             let value = unit.value as f32;
             mean_offers += unit.offers.len() as f32;
             nei_mean_rent_per_area += unit.rent_per_area();
@@ -64,7 +64,7 @@ pub fn stats(city: &City, tenants: &Vec<Tenant>, landlords: &Vec<Landlord>, doma
             let mut rent_discount = 0;
             let rent_per_tenant = unit.rent as f32/unit.tenants.len() as f32;
             for &t_id in &unit.tenants {
-                let tenant = &tenants[t_id];
+                let tenant = &sim.tenants[t_id];
                 rent_discount += tenant.last_dividend;
                 nei_mean_rent_income_ratio += rent_per_tenant/tenant.income as f32;
             }
@@ -89,10 +89,10 @@ pub fn stats(city: &City, tenants: &Vec<Tenant>, landlords: &Vec<Landlord>, doma
         }
 
         let nei_n_units = unit_ids.len() as f32;
-        let parcels = &city.residential_parcels_by_neighborhood[neighb_id];
+        let parcels = &sim.city.residential_parcels_by_neighborhood[neighb_id];
         n_parcels += parcels.len() as f32;
         let nei_mean_desirability = parcels.iter().fold(0., |acc, pos| {
-            acc + city.parcels[pos].desirability
+            acc + sim.city.parcels[pos].desirability
         });
 
         neighborhood_stats.insert(neighb_id, json!({
@@ -119,7 +119,7 @@ pub fn stats(city: &City, tenants: &Vec<Tenant>, landlords: &Vec<Landlord>, doma
     }
 
     let mut landlord_stats = HashMap::new();
-    for landlord in landlords {
+    for landlord in &sim.landlords {
         let data = landlord_data.entry(landlord.id).or_insert((0., 0.));
         let l_n_units = landlord.units.len() as f32;
         landlord_stats.insert(landlord.id as i32, json!({
@@ -131,15 +131,16 @@ pub fn stats(city: &City, tenants: &Vec<Tenant>, landlords: &Vec<Landlord>, doma
     }
 
     // DOMA special id of -1
+    let n_doma_units = sim.doma.units.len() as f32;
     landlord_stats.insert(-1, json!({
-        "n_units": doma.units.len(),
-        "p_units": doma.units.len() as f32/n_units,
-        "mean_condition": doma_data.0/doma.units.len() as f32,
-        "mean_adjusted_rent_per_area": doma_data.1/doma.units.len() as f32
+        "n_units": n_doma_units,
+        "p_units": n_doma_units/n_units,
+        "mean_condition": doma_data.0/n_doma_units,
+        "mean_adjusted_rent_per_area": doma_data.1/n_doma_units
     }));
 
     json!({
-        "percent_homeless": 1. - n_housed/tenants.len() as f32,
+        "percent_homeless": 1. - n_housed/sim.tenants.len() as f32,
         "percent_vacant": n_vacant/n_units,
         "n_units": n_units,
         "p_units": 1.,
@@ -154,8 +155,8 @@ pub fn stats(city: &City, tenants: &Vec<Tenant>, landlords: &Vec<Landlord>, doma
         "mean_rent_income_ratio": if n_housed > 0. { mean_rent_income_ratio/n_housed } else { 0. },
         "mean_offers": mean_offers/n_units,
         "unique_landlords": unique_landlords.len(),
-        "doma_members": doma.shares.len() as f32/tenants.len() as f32,
-        "doma_property_fund": doma.funds,
+        "doma_members": sim.doma.shares.len() as f32/sim.tenants.len() as f32,
+        "doma_property_fund": sim.doma.funds,
         "mean_desirability": mean_desirability/n_parcels,
         // 'doma_total_dividend_payout': self.doma.last_payout,
         // 'n_sales': sum(t.sales for t in self.landlords + self.tenants),
