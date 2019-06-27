@@ -110,12 +110,16 @@ impl Tenant {
         }
     }
 
+    pub fn adjusted_rent(&self, unit: &Unit) -> f32 {
+        let rent_per_tenant = f32::max(1., unit.rent as f32/unit.tenants.len() as f32);
+        rent_per_tenant - f32::min(rent_per_tenant, self.last_dividend as f32)
+    }
+
     pub fn desirability(&self, unit: &Unit, parcel: &Parcel) -> f32 {
-        let rent = unit.rent;
         let n_tenants = unit.tenants.len() + 1;
 
         // Adjust rent by last DOMA dividend
-        let mut rent_per_tenant = max(1, rent/n_tenants);
+        let mut rent_per_tenant = max(1, unit.rent/n_tenants);
         rent_per_tenant -= min(rent_per_tenant, self.last_dividend);
 
         if self.income < rent_per_tenant {

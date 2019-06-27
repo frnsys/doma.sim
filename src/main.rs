@@ -15,6 +15,7 @@ mod sync;
 mod stats;
 mod design;
 mod config;
+mod play;
 use self::city::{City, Unit, Building, Parcel, ParcelType};
 use self::grid::{Position};
 use self::agent::{Landlord, Tenant, DOMA, AgentType};
@@ -216,8 +217,7 @@ fn main() {
     let income_dist = WeightedIndex::new(design.city.incomes.iter().map(|i| i.p)).unwrap();
     let work_dist = WeightedIndex::new(commercial_weights).unwrap();
     let vacancies: Vec<usize> = city.units.iter().map(|u| u.id).collect();
-    // let mut tenants: Vec<Tenant> = (0..design.city.population).map(|i| {
-    let mut tenants: Vec<Tenant> = (0..75000).map(|i| {
+    let mut tenants: Vec<Tenant> = (0..design.city.population).map(|i| {
         let tenant_id = i as usize;
         let income_range = &design.city.incomes[income_dist.sample(&mut rng)];
         let income = rng.gen_range(income_range.low, income_range.high) as usize;
