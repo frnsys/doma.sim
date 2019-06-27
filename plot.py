@@ -83,7 +83,7 @@ def make_plots(output_dir):
                 if id == "-1":
                     plt.plot(range(len(vals)), vs, label='DOMA', color='#f771b4')
                 else:
-                    plt.plot(range(len(vals)), vs, label='Landlord {}'.format(neighb))
+                    plt.plot(range(len(vals)), vs, label='Landlord {}'.format(id))
             plt.legend()
             fnames.append('{}_landlords.png'.format(k))
             plt.savefig(os.path.join(output_dir, 'plots/{}_landlords.png'.format(k)))
@@ -113,6 +113,10 @@ def make_plots(output_dir):
         '''.format(
             dt=datetime.now().isoformat(),
             config=json.dumps(config),
-            meta=', '.join('{}: {}'.format(k, v) for k, v in output.get('meta', {}).items()),
+            meta=', '.join('{}: {}'.format(k, v) for k, v in output['meta'].items()),
             imgs='\n'.join(['<img style="width:400px;" src="{}">'.format(fname) for fname in fnames]))
         f.write(html)
+
+
+if __name__ == '__main__':
+    make_plots('.')

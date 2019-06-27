@@ -1,7 +1,7 @@
 use rand::Rng;
 use super::grid::{Position};
 use super::city::{City, Unit, Parcel};
-use std::cmp::{max};
+use std::cmp::{max, min};
 use std::collections::HashMap;
 use rand::seq::SliceRandom;
 use linreg::{linear_regression};
@@ -47,7 +47,6 @@ pub struct Tenant {
 impl Tenant {
     pub fn step(&mut self, city: &mut City, month: usize, vacant_units: &mut Vec<usize>) {
         let mut reconsider;
-        let mut moved = false;
         let mut current_desirability = 0.;
         let mut moving_penalty = MOVING_PENALTY;
         let mut rng = rand::thread_rng();
@@ -116,7 +115,6 @@ impl Tenant {
                 self.unit = Some(best_id);
                 let unit = &mut city.units[best_id];
                 unit.tenants.insert(self.id);
-                moved = true;
                 if unit.vacancies() == 0 {
                     vacant_units.retain(|&u_id| u_id != best_id);
                 }
@@ -129,7 +127,8 @@ impl Tenant {
         let n_tenants = unit.tenants.len() + 1;
 
         // Adjust rent by last DOMA dividend
-        let rent_per_tenant = max(1, rent/n_tenants) - self.last_dividend;
+        let mut rent_per_tenant = max(1, rent/n_tenants);
+        rent_per_tenant -= min(rent_per_tenant, self.last_dividend);
 
         if self.income < rent_per_tenant {
             0.
@@ -217,7 +216,7 @@ impl Landlord {
             rent_obvs: rent_obvs,
             trend_ests: trend_ests,
             invest_ests: invest_ests,
-            maintenance: 0.1
+            maintenance: 0.001
         }
     }
 
@@ -247,7 +246,7 @@ impl Landlord {
                 }
             } else {
                 // Year-long leases
-                let elapsed = month - unit.lease_month;
+                let elapsed = month as i32 - unit.lease_month as i32;
                 if elapsed > 0 && elapsed % 12 == 0 {
                     // TODO this can be smarter
                     // i.e. depend on gap b/w
@@ -261,7 +260,7 @@ impl Landlord {
         // Make purchase offers
         // Choose random neighborhood weighted by investment potential
         let neighbs: Vec<usize> = self.invest_ests.keys().cloned().collect();
-        let neighb_weights: Vec<f32> = neighbs.iter().map(|neighb_id| self.invest_ests[neighb_id]).collect();
+        let neighb_weights: Vec<f32> = neighbs.iter().map(|neighb_id| f32::max(0., self.invest_ests[neighb_id])).collect();
         let neighb_id = if neighb_weights.iter().all(|&w| w == 0.) {
             *neighbs.choose(&mut rng).unwrap()
         } else {
@@ -274,7 +273,7 @@ impl Landlord {
         for &u_id in sample {
             let unit = &mut city.units[u_id];
             let parcel = &city.parcels[&unit.pos];
-            let est_value = ((est_future_rent * unit.area as f32) * 12. * (price_to_rent_ratio * parcel.desirability)).round() as usize;
+            let est_value = ((est_future_rent * unit.area as f32) * 12. * (price_to_rent_ratio * parcel.desirability)).round() as usize * 100;
             if est_value > 0 && est_value > unit.value {
                 unit.offers.push((AgentType::Landlord, self.id, est_value));
             }
@@ -429,7 +428,7 @@ impl DOMA {
             match tenant.unit {
                 Some(u_id) => {
                     let unit = &mut city.units[u_id];
-                    if unit.owner.0 == AgentType::DOMA {
+                    if unit.owner.0 != AgentType::DOMA {
                         Some((u_id, unit.value, unit.rent))
                     } else {
                         None
@@ -443,7 +442,7 @@ impl DOMA {
         if candidates.len() == 0 {
             candidates = city.units.iter_mut().filter_map(|unit| {
                 // Ensure unit is affordable
-                if unit.owner.0 == AgentType::DOMA {
+                if unit.owner.0 != AgentType::DOMA {
                     Some((unit.id, unit.value, unit.rent))
                 } else {
                     None
@@ -455,7 +454,7 @@ impl DOMA {
         candidates = candidates.into_iter().filter(|&(_, value, _)| (value as i32) <= self.funds).collect();
 
         // Prioritize cheap properties with high rent-to-price ratios
-        candidates.sort_by_key(|&(_, value, rent)| value * (value/rent));
+        candidates.sort_by_key(|&(_, value, rent)| value * (value/(rent+1))); // TODO temp for nonzero
 
         // Make offers
         let mut committed = 0;

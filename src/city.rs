@@ -40,14 +40,6 @@ impl City {
             residential_parcels_by_neighborhood: HashMap::new()
         }
     }
-
-    pub fn parcels_of_type(&self, typ: ParcelType) -> Vec<&Parcel> {
-        self.parcels.values().filter(|p| p.typ == typ).collect()
-    }
-
-    pub fn mut_parcels_of_type(&mut self, typ: ParcelType) -> Vec<&mut Parcel> {
-        self.parcels.values_mut().filter(|p| p.typ == typ).collect()
-    }
 }
 
 pub struct Unit {
@@ -62,6 +54,7 @@ pub struct Unit {
     pub lease_month: usize,
     pub owner: (AgentType, usize),
     pub pos: Position,
+    pub recently_sold: bool,
     pub offers: Vec<(AgentType, usize, usize)> // landlord type, landlord id, offer amount
 }
 
@@ -76,6 +69,10 @@ impl Unit {
 
     pub fn rent_per_area(&self) -> f32 {
         self.rent as f32/self.area as f32
+    }
+
+    pub fn value_per_area(&self) -> f32 {
+        self.value as f32/self.area as f32
     }
 }
 

@@ -29,16 +29,11 @@ use serde_json::json;
 
 static DOMA_STARTING_FUNDS: i32 = 2e6 as i32;
 static DESIRABILITY_STRETCH_FACTOR: f64 = 72.;
-
-// TODO
-// move into city implementation
-// grid should only be for managing positions, does not hold any cell data
-// keep parcels in a hashmap<pos, parcel>
-// that way we can access grid functions while mutating parcels
-// iterate over parcels with hashmap.values
+static BASE_APPRECIATION: f32 = 1.02;
 
 fn main() {
-    let design = design::load_design("philadelphia");
+    let design_id = "philadelphia";
+    let mut design = design::load_design(design_id);
 
     let rows = design.map.layout.len();
     let cols = design.map.layout[0].len();
@@ -80,6 +75,21 @@ fn main() {
     for &id in design.neighborhoods.keys() {
         neighborhood_trends.insert(id, OpenSimplex::new());
         city.units_by_neighborhood.insert(id, Vec::new());
+    }
+    let mut nei_des_min = 1./0.;
+    let mut nei_des_max = 0.;
+    for n in design.neighborhoods.values() {
+        if n.desirability > nei_des_max {
+            nei_des_max = n.desirability;
+        }
+        if n.desirability < nei_des_min {
+            nei_des_min = n.desirability;
+        }
+    }
+    let nei_des_range = nei_des_max - nei_des_min;
+
+    for n in design.neighborhoods.values_mut() {
+        n.desirability = 1. + (n.desirability - nei_des_min)/(nei_des_range) - 0.5;
     }
 
     for p in parcels.values().filter(|p| p.typ == ParcelType::Residential) {
@@ -123,6 +133,7 @@ fn main() {
                         offers: Vec::new(),
                         months_vacant: 0,
                         lease_month: 0,
+                        recently_sold: false,
                         owner: (AgentType::Landlord, 0) // Dummy placeholder
                     };
                     city.units_by_neighborhood.get_mut(&neighb_id).unwrap().push(id);
@@ -246,18 +257,28 @@ fn main() {
             let roll: f32 = rng.gen();
             u.owner = if !u.vacant() {
                 if roll < 0.33 {
-                    (AgentType::Landlord, landlords.choose(&mut rng).unwrap().id)
+                    let landlord = landlords.choose_mut(&mut rng).unwrap();
+                    landlord.units.push(u.id);
+                    (AgentType::Landlord, landlord.id)
                 } else if roll < 0.66 {
                     let unit_tenants: Vec<usize> = u.tenants.iter().cloned().collect();
-                    (AgentType::Tenant, *unit_tenants.choose(&mut rng).unwrap())
+                    let t_id = *unit_tenants.choose(&mut rng).unwrap();
+                    tenants[t_id].units.push(u.id);
+                    (AgentType::Tenant, t_id)
                 } else {
-                    (AgentType::Tenant, tenants.choose(&mut rng).unwrap().id)
+                    let tenant = tenants.choose_mut(&mut rng).unwrap();
+                    tenant.units.push(u.id);
+                    (AgentType::Tenant, tenant.id)
                 }
             } else {
                 if roll < 0.5 {
-                    (AgentType::Landlord, landlords.choose(&mut rng).unwrap().id)
+                    let landlord = landlords.choose_mut(&mut rng).unwrap();
+                    landlord.units.push(u.id);
+                    (AgentType::Landlord, landlord.id)
                 } else {
-                    (AgentType::Tenant, tenants.choose(&mut rng).unwrap().id)
+                    let tenant = tenants.choose_mut(&mut rng).unwrap();
+                    tenant.units.push(u.id);
+                    (AgentType::Tenant, tenant.id)
                 }
             };
         }
@@ -269,21 +290,10 @@ fn main() {
 
     println!("{:?} tenants", tenants.len());
 
-    let steps = 100;
+    let steps = 600;
     let mut history = Vec::new();
     let mut pb = ProgressBar::new(steps);
     for step in 0..steps as usize {
-        for landlord in &mut landlords {
-            landlord.step(&mut city, step, design.city.price_to_rent_ratio);
-        }
-
-        let mut vacant_units: Vec<usize> = city.units.iter().filter(|u| u.vacancies() > 0).map(|u| u.id).collect();
-        for tenant in &mut tenants {
-            tenant.step(&mut city, step, &mut vacant_units);
-        }
-
-        doma.step(&mut city, &mut tenants);
-
         let mut transfers = Vec::new();
         for tenant in &mut tenants {
             transfers.extend(tenant.check_purchase_offers(&mut city, design.city.price_to_rent_ratio));
@@ -304,6 +314,42 @@ fn main() {
                 _ => {}
             }
         }
+
+        for landlord in &mut landlords {
+            landlord.step(&mut city, step, design.city.price_to_rent_ratio);
+        }
+
+        let mut vacant_units: Vec<usize> = city.units.iter().filter(|u| u.vacancies() > 0).map(|u| u.id).collect();
+        for tenant in &mut tenants {
+            tenant.step(&mut city, step, &mut vacant_units);
+        }
+
+        if step % 12 == 0 {
+            // Appraise
+            for (_, unit_ids) in &city.units_by_neighborhood {
+                let units: Vec<&Unit> = unit_ids.iter().map(|&u_id| &city.units[u_id]).collect();
+                let sold: Vec<&Unit> = units.iter().filter(|u| u.recently_sold).cloned().collect();
+                let mean_value_per_area = if sold.len() == 0 {
+                    units.iter().fold(0., |acc, u| {
+                        acc + (u.value_per_area() * BASE_APPRECIATION)
+                    })/units.len() as f32
+                } else {
+                    sold.iter().fold(0., |acc, u| {
+                        acc + (u.value_per_area() * BASE_APPRECIATION)
+                    })/sold.len() as f32
+                };
+
+                for &u_id in unit_ids {
+                    let mut unit = &mut city.units[u_id];
+                    if !unit.recently_sold {
+                        unit.value = (mean_value_per_area * unit.area as f32).round() as usize;
+                    }
+                    unit.recently_sold = false;
+                }
+            }
+        }
+
+        doma.step(&mut city, &mut tenants);
 
         // Desirability changes, random walk
         for (neighb_id, parcel_ids) in &city.residential_parcels_by_neighborhood {
@@ -327,7 +373,14 @@ fn main() {
         pb.inc();
     }
     let results = json!({
-        "history": history
+        "history": history,
+        "meta": {
+            // 'seed': SEED, // TODO
+            "design": design_id,
+            "tenants": tenants.len(),
+            "units": city.units.len(),
+            "occupancy": city.units.iter().fold(0, |acc, u| acc + u.occupancy)
+        }
     }).to_string();
     fs::write("output.json", results).expect("Unable to write file");
 }

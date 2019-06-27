@@ -1,13 +1,14 @@
 use serde_json::{json, Value};
 use super::agent::{Landlord, Tenant, DOMA, AgentType};
 use super::city::City;
-use std::cmp::{max};
+use std::cmp::{max, min};
 use std::collections::{HashMap, HashSet};
 
 pub fn stats(city: &City, tenants: &Vec<Tenant>, landlords: &Vec<Landlord>, doma: &DOMA) -> Value {
     let n_units = city.units.len() as f32;
-    let mut n_housed = 0;
+    let mut n_housed = 0.;
     let mut n_vacant = 0.;
+    let mut n_parcels = 0.;
     let mut mean_rent_per_area = 0.;
     let mut mean_adjusted_rent_per_area = 0.;
     let mut mean_months_vacant = 0.;
@@ -18,12 +19,17 @@ pub fn stats(city: &City, tenants: &Vec<Tenant>, landlords: &Vec<Landlord>, doma
     let mut mean_offers = 0.;
     let mut mean_value = 0.;
     let mut min_value = 1./0.;
+    let mut mean_desirability = 0.;
     let mut unique_landlords = HashSet::new();
     let mut landlord_data = HashMap::new();
     let mut doma_data = (0., 0.);
 
     let mut neighborhood_stats = HashMap::new();
     for (neighb_id, unit_ids) in &city.units_by_neighborhood {
+        if unit_ids.len() == 0 {
+            continue
+        }
+
         let mut nei_n_doma = 0;
         let mut nei_n_vacant = 0.;
         let mut nei_n_tenants = 0;
@@ -57,13 +63,18 @@ pub fn stats(city: &City, tenants: &Vec<Tenant>, landlords: &Vec<Landlord>, doma
 
             let mut rent_discount = 0;
             let rent_per_tenant = unit.rent as f32/unit.tenants.len() as f32;
+            if unit.tenants.len() > 0 {
+                // println!("rent: {:?}", unit.rent);
+                // println!("rent per tenant: {:?}", rent_per_tenant);
+                // println!("tenants: {:?}", unit.tenants.len());
+            }
             for &t_id in &unit.tenants {
                 let tenant = &tenants[t_id];
                 rent_discount += tenant.last_dividend;
                 nei_mean_rent_income_ratio += rent_per_tenant/tenant.income as f32;
             }
-            nei_mean_adjusted_rent_per_area += (max(0, unit.rent - rent_discount)) as f32/unit.area as f32;
-            n_housed += unit.tenants.len();
+            nei_mean_adjusted_rent_per_area += (max(0, unit.rent - min(unit.rent, rent_discount))) as f32/unit.area as f32;
+            n_housed += unit.tenants.len() as f32;
             nei_n_tenants += unit.tenants.len();
 
             unique_landlords.insert(unit.owner);
@@ -81,7 +92,14 @@ pub fn stats(city: &City, tenants: &Vec<Tenant>, landlords: &Vec<Landlord>, doma
                 _ => {}
             }
         }
+
         let nei_n_units = unit_ids.len() as f32;
+        let parcels = &city.residential_parcels_by_neighborhood[neighb_id];
+        n_parcels += parcels.len() as f32;
+        let nei_mean_desirability = parcels.iter().fold(0., |acc, pos| {
+            acc + city.parcels[pos].desirability
+        });
+
         neighborhood_stats.insert(neighb_id, json!({
             "percent_vacant": nei_n_vacant/nei_n_units,
             "mean_rent_per_area": nei_mean_rent_per_area/nei_n_units,
@@ -91,6 +109,7 @@ pub fn stats(city: &City, tenants: &Vec<Tenant>, landlords: &Vec<Landlord>, doma
             "mean_rent_income_ratio": if nei_n_tenants > 0 {
                 nei_mean_rent_income_ratio/nei_n_tenants as f32
             } else { 0. },
+            "mean_desirability": nei_mean_desirability/parcels.len() as f32,
             "doma_units": nei_n_doma
         }));
 
@@ -100,7 +119,8 @@ pub fn stats(city: &City, tenants: &Vec<Tenant>, landlords: &Vec<Landlord>, doma
         mean_value_per_area += nei_mean_value_per_area;
         mean_months_vacant += nei_mean_months_vacant;
         mean_rent_income_ratio += nei_mean_rent_income_ratio;
-        //     'mean_desirability': sum(p.weighted_desirability for p in parcels_by_neighb[neighb])/len(parcels_by_neighb[neighb]),
+        mean_desirability += nei_mean_desirability;
+
     }
 
     let mut landlord_stats = HashMap::new();
@@ -121,8 +141,11 @@ pub fn stats(city: &City, tenants: &Vec<Tenant>, landlords: &Vec<Landlord>, doma
         "mean_adjusted_rent_per_area": doma_data.1/doma.units.len() as f32
     }));
 
+    println!("N HOUSED {:?}", n_housed);
+    println!("TENANTS {:?}", tenants.len());
+
     json!({
-        "percent_homeless": n_housed/tenants.len(),
+        "percent_homeless": 1. - n_housed/tenants.len() as f32,
         "percent_vacant": n_vacant/n_units,
         "n_units": n_units,
         "mean_rent_per_area": mean_rent_per_area/n_units,
@@ -133,13 +156,13 @@ pub fn stats(city: &City, tenants: &Vec<Tenant>, landlords: &Vec<Landlord>, doma
         "min_value": min_value,
         "mean_condition": mean_condition/n_units,
         "mean_price_to_rent_ratio": mean_price_to_rent_ratio/n_units,
-        "mean_rent_income_ratio": if n_housed > 0 { mean_rent_income_ratio/n_housed as f32 } else { 0. },
+        "mean_rent_income_ratio": if n_housed > 0. { mean_rent_income_ratio/n_housed } else { 0. },
         "mean_offers": mean_offers/n_units,
         "unique_landlords": unique_landlords.len(),
         "doma_members": doma.shares.len() as f32/tenants.len() as f32,
         "doma_units": doma.units.len(),
         "doma_property_fund": doma.funds,
-        // 'mean_desirability': sum(p.weighted_desirability for p in parcels)/len(parcels),
+        "mean_desirability": mean_desirability/n_parcels,
         // 'doma_total_dividend_payout': self.doma.last_payout,
         // 'n_sales': sum(t.sales for t in self.landlords + self.tenants),
         // 'n_moved': sum(1 for t in self.tenants if t.moved),
