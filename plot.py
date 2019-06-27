@@ -118,4 +118,4 @@ def make_plots(output_dir):
 
 
 if __name__ == '__main__':
-    make_plots('.')
+    make_plots('runs/latest')

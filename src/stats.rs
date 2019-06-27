@@ -121,17 +121,19 @@ pub fn stats(city: &City, tenants: &Vec<Tenant>, landlords: &Vec<Landlord>, doma
     let mut landlord_stats = HashMap::new();
     for landlord in landlords {
         let data = landlord_data.entry(landlord.id).or_insert((0., 0.));
-        let n_units = landlord.units.len() as f32;
+        let l_n_units = landlord.units.len() as f32;
         landlord_stats.insert(landlord.id as i32, json!({
-            "n_units": n_units,
-            "mean_condition": data.0/n_units,
-            "mean_adjusted_rent_per_area": data.1/n_units
+            "n_units": l_n_units,
+            "p_units": l_n_units/n_units,
+            "mean_condition": data.0/l_n_units,
+            "mean_adjusted_rent_per_area": data.1/l_n_units
         }));
     }
 
     // DOMA special id of -1
     landlord_stats.insert(-1, json!({
         "n_units": doma.units.len(),
+        "p_units": doma.units.len() as f32/n_units,
         "mean_condition": doma_data.0/doma.units.len() as f32,
         "mean_adjusted_rent_per_area": doma_data.1/doma.units.len() as f32
     }));
@@ -140,6 +142,7 @@ pub fn stats(city: &City, tenants: &Vec<Tenant>, landlords: &Vec<Landlord>, doma
         "percent_homeless": 1. - n_housed/tenants.len() as f32,
         "percent_vacant": n_vacant/n_units,
         "n_units": n_units,
+        "p_units": 1.,
         "mean_rent_per_area": mean_rent_per_area/n_units,
         "mean_adjusted_rent_per_area": mean_adjusted_rent_per_area/n_units,
         "mean_months_vacant": mean_months_vacant/n_units,
@@ -152,7 +155,6 @@ pub fn stats(city: &City, tenants: &Vec<Tenant>, landlords: &Vec<Landlord>, doma
         "mean_offers": mean_offers/n_units,
         "unique_landlords": unique_landlords.len(),
         "doma_members": doma.shares.len() as f32/tenants.len() as f32,
-        "doma_units": doma.units.len(),
         "doma_property_fund": doma.funds,
         "mean_desirability": mean_desirability/n_parcels,
         // 'doma_total_dividend_payout': self.doma.last_payout,

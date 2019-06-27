@@ -6,6 +6,7 @@ extern crate noise;
 extern crate redis;
 extern crate md5;
 extern crate pbr;
+extern crate chrono;
 
 mod grid;
 mod city;
@@ -28,7 +29,10 @@ use rand::seq::SliceRandom;
 use noise::{OpenSimplex, Seedable, NoiseFn};
 use pbr::ProgressBar;
 use std::fs;
+use std::path::Path;
+use std::os::unix::fs::symlink;
 use serde_json::json;
+use chrono::prelude::*;
 
 
 fn main() {
@@ -212,7 +216,8 @@ fn main() {
     let income_dist = WeightedIndex::new(design.city.incomes.iter().map(|i| i.p)).unwrap();
     let work_dist = WeightedIndex::new(commercial_weights).unwrap();
     let vacancies: Vec<usize> = city.units.iter().map(|u| u.id).collect();
-    let mut tenants: Vec<Tenant> = (0..design.city.population).map(|i| {
+    // let mut tenants: Vec<Tenant> = (0..design.city.population).map(|i| {
+    let mut tenants: Vec<Tenant> = (0..75000).map(|i| {
         let tenant_id = i as usize;
         let income_range = &design.city.incomes[income_dist.sample(&mut rng)];
         let income = rng.gen_range(income_range.low, income_range.high) as usize;
@@ -313,7 +318,7 @@ fn main() {
                 },
                 AgentType::DOMA => {
                     doma.units.push(unit_id);
-                    println!("{:?}/{:?}", amount, doma.funds);
+                    // println!("{:?}/{:?}", amount, doma.funds);
                     doma.funds -= amount as i32;
                 },
                 _ => {}
@@ -381,6 +386,9 @@ fn main() {
     }
 
     if conf.debug {
+        // Save run data
+        let now: DateTime<Utc> = Utc::now();
+        let now_str = now.format("%Y.%m.%d.%H.%M").to_string();
         let results = json!({
             "history": history,
             "meta": {
@@ -391,6 +399,21 @@ fn main() {
                 "occupancy": city.units.iter().fold(0, |acc, u| acc + u.occupancy)
             }
         }).to_string();
-        fs::write("output.json", results).expect("Unable to write file");
+
+        let dir = format!("runs/{}", now_str);
+        let fname = format!("runs/{}/output.json", now_str);
+
+        let path = Path::new(&dir);
+        let run_path = Path::new(&now_str);
+        let latest_path = Path::new("runs/latest");
+        fs::create_dir(path).unwrap();
+        fs::write(fname, results).expect("Unable to write file");
+        if latest_path.exists() {
+            fs::remove_file(latest_path).unwrap();
+        }
+        symlink(run_path, latest_path).unwrap();
+
+        let conf_path = Path::join(path, Path::new("config.yaml"));
+        fs::copy(Path::new("config.yaml"), conf_path).unwrap();
     }
 }

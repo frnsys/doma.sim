@@ -26,6 +26,9 @@ pub struct Config {
     pub debug: bool,
 
     #[serde(default)]
+    pub sync: bool,
+
+    #[serde(default)]
     pub seed: u64
 }
 
@@ -42,6 +45,11 @@ pub fn load_config() -> Config {
     conf.debug = match env::var("DEBUG") {
         Ok(debug) => debug == "1",
         Err(_) => false
+    };
+
+    conf.sync = match env::var("SYNC") {
+        Ok(sync) => sync == "1",
+        Err(_) => true
     };
 
     let mut rng = rand::thread_rng();
