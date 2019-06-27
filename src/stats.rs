@@ -1,7 +1,6 @@
 use serde_json::{json, Value};
 use super::sim::Simulation;
 use super::agent::AgentType;
-use std::cmp::{max, min};
 use std::collections::{HashMap, HashSet};
 
 pub fn stats(sim: &Simulation) -> Value {
@@ -41,17 +40,17 @@ pub fn stats(sim: &Simulation) -> Value {
 
         for &unit_id in unit_ids {
             let unit = &sim.city.units[unit_id];
-            let value = unit.value as f32;
+            let value = unit.value;
             mean_offers += unit.offers.len() as f32;
             nei_mean_rent_per_area += unit.rent_per_area();
             nei_mean_months_vacant += unit.months_vacant as f32;
-            nei_mean_value_per_area += value/unit.area as f32;
+            nei_mean_value_per_area += value/unit.area;
             mean_value += value;
             mean_condition += unit.condition;
-            mean_price_to_rent_ratio += if unit.rent == 0 {
+            mean_price_to_rent_ratio += if unit.rent == 0. {
                 0.
             } else {
-                value/(unit.rent*12) as f32
+                value/(unit.rent*12.)
             };
             if value < min_value {
                 min_value = value;
@@ -61,14 +60,14 @@ pub fn stats(sim: &Simulation) -> Value {
                 nei_n_vacant += 1.;
             }
 
-            let mut rent_discount = 0;
-            let rent_per_tenant = unit.rent as f32/unit.tenants.len() as f32;
+            let mut rent_discount = 0.;
+            let rent_per_tenant = unit.rent/unit.tenants.len() as f32;
             for &t_id in &unit.tenants {
                 let tenant = &sim.tenants[t_id];
                 rent_discount += tenant.last_dividend;
-                nei_mean_rent_income_ratio += rent_per_tenant/tenant.income as f32;
+                nei_mean_rent_income_ratio += rent_per_tenant/tenant.income;
             }
-            nei_mean_adjusted_rent_per_area += (max(0, unit.rent - min(unit.rent, rent_discount))) as f32/unit.area as f32;
+            nei_mean_adjusted_rent_per_area += f32::max(0., unit.rent - f32::min(unit.rent, rent_discount))/unit.area;
             n_housed += unit.tenants.len() as f32;
             nei_n_tenants += unit.tenants.len();
 

@@ -3,16 +3,15 @@ use rand::rngs::StdRng;
 use super::config::{Config};
 use super::grid::{Position};
 use super::city::{City, Unit, Parcel};
-use std::cmp::{max, min};
-use std::collections::HashMap;
+use fnv::FnvHashMap;
 use rand::seq::SliceRandom;
 use linreg::{linear_regression};
 use strum_macros::{Display};
 use rand::distributions::WeightedIndex;
 use rand::prelude::*;
 
-fn distance(a: Position, b: Position) -> f64 {
-    (((a.0 - b.0).pow(2) + (a.1 - b.1).pow(2)) as f64).sqrt()
+fn distance(a: Position, b: Position) -> f32 {
+    (((a.0 - b.0).pow(2) + (a.1 - b.1).pow(2)) as f32).sqrt()
 }
 
 
@@ -26,11 +25,11 @@ pub enum AgentType {
 #[derive(Debug)]
 pub struct Tenant {
     pub id: usize,
-    pub income: usize,
+    pub income: f32,
     pub unit: Option<usize>,
     pub work: Position,
     pub units: Vec<usize>,
-    pub last_dividend: usize
+    pub last_dividend: f32
 }
 
 impl Tenant {
@@ -111,23 +110,23 @@ impl Tenant {
     }
 
     pub fn adjusted_rent(&self, unit: &Unit) -> f32 {
-        let rent_per_tenant = f32::max(1., unit.rent as f32/unit.tenants.len() as f32);
-        rent_per_tenant - f32::min(rent_per_tenant, self.last_dividend as f32)
+        let rent_per_tenant = f32::max(1., unit.rent/unit.tenants.len() as f32);
+        rent_per_tenant - f32::min(rent_per_tenant, self.last_dividend)
     }
 
     pub fn desirability(&self, unit: &Unit, parcel: &Parcel) -> f32 {
-        let n_tenants = unit.tenants.len() + 1;
+        let n_tenants = (unit.tenants.len() + 1) as f32;
 
         // Adjust rent by last DOMA dividend
-        let mut rent_per_tenant = max(1, unit.rent/n_tenants);
-        rent_per_tenant -= min(rent_per_tenant, self.last_dividend);
+        let rent_per_tenant = f32::max(1., unit.rent/n_tenants);
+        let adjusted_rent_per_tenant = f32::min(rent_per_tenant, self.last_dividend);
 
-        if self.income < rent_per_tenant {
+        if self.income < adjusted_rent_per_tenant {
             0.
         } else {
-            let ratio = (self.income as f32/rent_per_tenant as f32).sqrt();
-            let spaciousness = f32::max(unit.area as f32/n_tenants as f32, 0.).powf(1./32.);
-            let commute_distance = distance(self.work, unit.pos) as f32;
+            let ratio = (self.income/adjusted_rent_per_tenant).sqrt();
+            let spaciousness = f32::max(unit.area/n_tenants, 0.).powf(1./32.);
+            let commute_distance = distance(self.work, unit.pos);
             let commute: f32 = if commute_distance == 0. {
                 1.
             } else {
@@ -137,7 +136,7 @@ impl Tenant {
         }
     }
 
-    pub fn check_purchase_offers(&mut self, city: &mut City, price_to_rent_ratio: f32) -> Vec<(AgentType, usize, usize, usize)> {
+    pub fn check_purchase_offers(&mut self, city: &mut City, price_to_rent_ratio: f32) -> Vec<(AgentType, usize, usize, f32)> {
         // If they own units,
         // check purchase offers
         let mut transfers = Vec::new();
@@ -151,19 +150,19 @@ impl Tenant {
                 //   the longer the vacancy, the more likely they are to sell
                 // - maintenance costs become too much
                 let parcel = &city.parcels[&unit.pos];
-                let est_value = unit.rent * 12 * (price_to_rent_ratio * parcel.desirability).round() as usize;
+                let est_value = unit.rent * 12. * price_to_rent_ratio * parcel.desirability;
 
                 // Find best offer, if any
                 // and mark offers as rejected or accepted
-                let (typ, landlord, best_amount): (AgentType, usize, usize) = unit.offers.iter()
-                                                   .fold((AgentType::Landlord, 0, 0), |(t, l, best), &(typ, landlord, amount)| {
+                let (typ, landlord, best_amount): (AgentType, usize, f32) = unit.offers.iter()
+                                                   .fold((AgentType::Landlord, 0, 0.), |(t, l, best), &(typ, landlord, amount)| {
                                                        if amount > est_value && amount > best {
                                                            (typ, landlord, amount)
                                                        } else {
                                                            (t, l, best)
                                                        }
                                                    });
-                if best_amount > 0 {
+                if best_amount > 0. {
                     unit.value = best_amount;
                     unit.owner = (AgentType::Landlord, landlord);
                     transfers.push((typ, landlord, u, best_amount));
@@ -186,16 +185,16 @@ pub struct Landlord {
     pub id: usize,
     pub units: Vec<usize>,
     pub maintenance: f32,
-    pub rent_obvs: HashMap<usize, Vec<f32>>,
-    pub trend_ests: HashMap<usize, f32>,
-    pub invest_ests: HashMap<usize, f32>
+    pub rent_obvs: FnvHashMap<usize, Vec<f32>>,
+    pub trend_ests: FnvHashMap<usize, f32>,
+    pub invest_ests: FnvHashMap<usize, f32>
 }
 
 impl Landlord {
     pub fn new(id: usize, neighborhood_ids: Vec<usize>) -> Landlord {
-        let mut rent_obvs = HashMap::new();
-        let mut trend_ests = HashMap::new();
-        let mut invest_ests = HashMap::new();
+        let mut rent_obvs = FnvHashMap::default();
+        let mut trend_ests = FnvHashMap::default();
+        let mut invest_ests = FnvHashMap::default();
         for id in neighborhood_ids {
             rent_obvs.insert(id, Vec::new());
             trend_ests.insert(id, 0.);
@@ -232,7 +231,7 @@ impl Landlord {
             if unit.vacant() {
                 unit.months_vacant += 1;
                 if unit.months_vacant % 2 == 0 {
-                    unit.rent = (unit.rent as f32 * 0.98).floor() as usize;
+                    unit.rent = unit.rent * 0.98;
                     // TODO u.maintenance += 0.01
                 }
             } else {
@@ -242,7 +241,7 @@ impl Landlord {
                     // TODO this can be smarter
                     // i.e. depend on gap b/w
                     // current rent and rent estimate/projection
-                    unit.rent = (unit.rent as f32 * conf.rent_increase_rate).ceil() as usize;
+                    unit.rent = unit.rent * conf.rent_increase_rate;
                     // TODO u.maintenance -= 0.01
                 }
             }
@@ -264,15 +263,15 @@ impl Landlord {
         for &u_id in sample {
             let unit = &mut city.units[u_id];
             let parcel = &city.parcels[&unit.pos];
-            let est_value = ((est_future_rent * unit.area as f32) * 12. * (price_to_rent_ratio * parcel.desirability)).round() as usize * 100;
-            if est_value > 0 && est_value > unit.value {
+            let est_value = est_future_rent * unit.area * 12. * price_to_rent_ratio * parcel.desirability; // TODO was *100
+            if est_value > 0. && est_value > unit.value {
                 unit.offers.push((AgentType::Landlord, self.id, est_value));
             }
         }
     }
 
     fn estimate_rents(&mut self, city: &City, rng: &mut StdRng, sample_size: usize) {
-        let mut neighborhoods: HashMap<usize, Vec<f32>> = HashMap::new();
+        let mut neighborhoods: FnvHashMap<usize, Vec<f32>> = FnvHashMap::default();
         for &u in &self.units {
             let unit = &city.units[u];
             if !unit.vacant() {
@@ -313,7 +312,7 @@ impl Landlord {
         }
     }
 
-    pub fn check_purchase_offers(&mut self, city: &mut City, price_to_rent_ratio: f32) -> Vec<(AgentType, usize, usize, usize)> {
+    pub fn check_purchase_offers(&mut self, city: &mut City, price_to_rent_ratio: f32) -> Vec<(AgentType, usize, usize, f32)> {
         let mut transfers = Vec::new();
         for &u in &self.units {
             let mut unit = &mut city.units[u];
@@ -326,19 +325,19 @@ impl Landlord {
                 // - maintenance costs become too much
                 let parcel = &city.parcels[&unit.pos];
                 let est_future_rent = self.trend_ests[&parcel.neighborhood.unwrap()];
-                let est_value = ((est_future_rent * unit.area as f32).round() * 12. * (price_to_rent_ratio * parcel.desirability).round()) as usize;
+                let est_value = est_future_rent * unit.area * 12. * price_to_rent_ratio * parcel.desirability;
 
                 // Find best offer, if any
                 // and mark offers as rejected or accepted
-                let (typ, landlord, best_amount): (AgentType, usize, usize) = unit.offers.iter()
-                                                   .fold((AgentType::Landlord, 0, 0), |(t, l, best), &(typ, landlord, amount)| {
+                let (typ, landlord, best_amount): (AgentType, usize, f32) = unit.offers.iter()
+                                                   .fold((AgentType::Landlord, 0, 0.), |(t, l, best), &(typ, landlord, amount)| {
                                                     if amount > est_value && amount > best {
                                                         (typ, landlord, amount)
                                                     } else {
                                                         (t, l, best)
                                                     }
                                                 });
-                if best_amount > 0 {
+                if best_amount > 0. {
                     unit.value = best_amount;
                     unit.owner = (AgentType::Landlord, landlord);
                     transfers.push((typ, landlord, u, best_amount));
@@ -358,8 +357,8 @@ impl Landlord {
 }
 
 pub struct DOMA {
-    pub funds: i32,
-    pub shares: HashMap<usize, f32>,
+    pub funds: f32,
+    pub shares: FnvHashMap<usize, f32>,
     pub units: Vec<usize>,
     maintenance: f32,
 
@@ -371,10 +370,10 @@ pub struct DOMA {
 }
 
 impl DOMA {
-    pub fn new(funds: i32, p_rent_share: f32, p_reserves: f32, p_expenses: f32) -> DOMA {
+    pub fn new(funds: f32, p_rent_share: f32, p_reserves: f32, p_expenses: f32) -> DOMA {
         DOMA {
             funds: funds,
-            shares: HashMap::new(),
+            shares: FnvHashMap::default(),
             maintenance: 1.,
             units: Vec::new(),
             p_rent_share: p_rent_share,
@@ -385,7 +384,7 @@ impl DOMA {
 
     pub fn step(&mut self, city: &mut City, tenants: &mut Vec<Tenant>, rng: &mut StdRng) {
         // Collect rent
-        let mut rent = 0;
+        let mut rent = 0.;
         for &u_id in &self.units {
             let unit = &mut city.units[u_id];
 
@@ -397,7 +396,7 @@ impl DOMA {
 
             if !unit.vacant() {
                 rent += unit.rent;
-                let rent_per_tenant = rent as f32/unit.tenants.len() as f32;
+                let rent_per_tenant = rent/unit.tenants.len() as f32;
                 for &t in &unit.tenants {
                     let share = self.shares.entry(t).or_insert(0.);
                     *share += rent_per_tenant * self.p_rent_share;
@@ -409,18 +408,18 @@ impl DOMA {
 
         // Pay dividends
         let p_dividend = 1.0 - self.p_reserves - self.p_expenses;
-        let dividends = rent as f32 * p_dividend;
+        let dividends = rent * p_dividend;
         for (&tenant_id, share) in &self.shares {
             let tenant = &mut tenants[tenant_id];
-            tenant.last_dividend = (dividends * share).round() as usize;
+            tenant.last_dividend = dividends * share;
         }
-        self.funds += (rent as f32 * self.p_reserves).round() as i32;
+        self.funds += rent * self.p_reserves;
 
         // TODO selling of properties
 
         // Make offers on properties
         // Get non-DOMA properties of DOMA tenants
-        let mut candidates: Vec<(usize, usize, usize)> = self.shares.keys().filter_map(|&t| {
+        let mut candidates: Vec<(usize, f32, f32)> = self.shares.keys().filter_map(|&t| {
             let tenant = &tenants[t];
             match tenant.unit {
                 Some(u_id) => {
@@ -448,15 +447,15 @@ impl DOMA {
         }
 
         // Filter to affordable
-        candidates = candidates.into_iter().filter(|&(_, value, _)| (value as i32) <= self.funds).collect();
+        candidates = candidates.into_iter().filter(|&(_, value, _)| value <= self.funds).collect();
 
         // Prioritize cheap properties with high rent-to-price ratios
-        candidates.sort_by_key(|&(_, value, rent)| value * (value/(rent+1))); // TODO temp for nonzero
+        candidates.sort_by_key(|&(_, value, rent)| (value * value/(rent+1.)).round() as usize);
 
         // Make offers
-        let mut committed = 0;
+        let mut committed = 0.;
         for (id, value, _) in candidates {
-            if (committed + value) as i32 > self.funds {
+            if (committed + value) > self.funds {
                 break
             }
             committed += value;

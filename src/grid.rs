@@ -58,8 +58,8 @@ impl HexGrid {
     }
 
     // 2D euclidean distance
-    pub fn distance(&self, a: Position, b: Position) -> f64 {
-        (((a.0 - b.0).pow(2) + (a.1 - b.1).pow(2)) as f64).sqrt()
+    pub fn distance(&self, a: Position, b: Position) -> f32 {
+        (((a.0 - b.0).pow(2) + (a.1 - b.1).pow(2)) as f32).sqrt()
     }
 }
 

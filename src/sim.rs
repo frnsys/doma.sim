@@ -39,7 +39,7 @@ impl Simulation {
         let mut tenants: Vec<Tenant> = (0..75000).map(|i| {
             let tenant_id = i as usize;
             let income_range = &design.city.incomes[income_dist.sample(&mut rng)];
-            let income = rng.gen_range(income_range.low, income_range.high) as usize;
+            let income = rng.gen_range(income_range.low, income_range.high) as f32;
             let work_pos = commercial[work_dist.sample(&mut rng)];
 
             let mut tenant = Tenant {
@@ -48,7 +48,7 @@ impl Simulation {
                 units: Vec::new(),
                 income: income,
                 work: work_pos,
-                last_dividend: 0
+                last_dividend: 0.
             };
 
             let lease_month = rng.gen_range(0, 11) as usize;
@@ -141,8 +141,7 @@ impl Simulation {
                 },
                 AgentType::DOMA => {
                     self.doma.units.push(unit_id);
-                    // println!("{:?}/{:?}", amount, doma.funds);
-                    self.doma.funds -= amount as i32;
+                    self.doma.funds -= amount;
                 },
                 _ => {}
             }
@@ -175,7 +174,7 @@ impl Simulation {
                 for &u_id in unit_ids {
                     let mut unit = &mut self.city.units[u_id];
                     if !unit.recently_sold {
-                        unit.value = (mean_value_per_area * unit.area as f32).round() as usize;
+                        unit.value = mean_value_per_area * unit.area;
                     }
                     unit.recently_sold = false;
                 }

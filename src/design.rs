@@ -1,11 +1,11 @@
 use redis::Commands;
 use serde::{Deserialize};
-use std::collections::HashMap;
+use fnv::FnvHashMap;
 
 #[derive(Deserialize, Debug)]
 pub struct Design {
     pub map: Map,
-    pub neighborhoods: HashMap<usize, Neighborhood>,
+    pub neighborhoods: FnvHashMap<usize, Neighborhood>,
     pub city: CityConfig
 }
 

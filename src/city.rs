@@ -5,7 +5,7 @@ use super::design::Design;
 use super::grid::{HexGrid, Position};
 use super::agent::{AgentType};
 use strum_macros::{EnumString, Display};
-use std::collections::{HashMap, HashSet};
+use fnv::{FnvHashMap, FnvHashSet};
 use noise::{OpenSimplex, Seedable};
 use rand::rngs::StdRng;
 
@@ -27,13 +27,13 @@ pub struct Parcel {
 
 pub struct City {
     pub grid: HexGrid,
-    pub buildings: HashMap<Position, Building>,
-    pub parcels: HashMap<Position, Parcel>,
+    pub buildings: FnvHashMap<Position, Building>,
+    pub parcels: FnvHashMap<Position, Parcel>,
     pub units: Vec<Unit>,
-    pub units_by_neighborhood: HashMap<usize, Vec<usize>>,
-    pub residential_parcels_by_neighborhood: HashMap<usize, Vec<Position>>,
-    pub commercial: HashMap<Position, usize>,
-    pub neighborhood_trends: HashMap<usize, OpenSimplex>
+    pub units_by_neighborhood: FnvHashMap<usize, Vec<usize>>,
+    pub residential_parcels_by_neighborhood: FnvHashMap<usize, Vec<Position>>,
+    pub commercial: FnvHashMap<Position, usize>,
+    pub neighborhood_trends: FnvHashMap<usize, OpenSimplex>
 }
 
 
@@ -44,7 +44,7 @@ impl City {
         let grid = HexGrid::new(rows, cols);
 
         // Initialize parcels
-        let mut parcels = HashMap::new();
+        let mut parcels = FnvHashMap::default();
         for (r, row) in design.map.layout.iter().enumerate() {
             for (c, cell) in row.iter().enumerate() {
                 match cell {
@@ -69,14 +69,14 @@ impl City {
         }
 
         let mut units = Vec::new();
-        let mut buildings = HashMap::new();
-        let mut commercial = HashMap::new();
-        let mut units_by_neighborhood = HashMap::new();
-        let mut residential_parcels_by_neighborhood = HashMap::new();
+        let mut buildings = FnvHashMap::default();
+        let mut commercial = FnvHashMap::default();
+        let mut units_by_neighborhood = FnvHashMap::default();
+        let mut residential_parcels_by_neighborhood = FnvHashMap::default();
 
         // Group units by neighborhood for lookup
         // and create neighborhood desirability trends
-        let mut neighborhood_trends = HashMap::new();
+        let mut neighborhood_trends = FnvHashMap::default();
         for &id in design.neighborhoods.keys() {
             let mut noise = OpenSimplex::new();
             noise = noise.set_seed(rng.gen());
@@ -125,20 +125,20 @@ impl City {
 
                     let mut building_units: Vec<usize> = Vec::new();
                     for _ in 0..n_units {
-                        let area = rng.gen_range(neighb.min_area, neighb.max_area) as usize;
-                        let rent = (design.city.price_per_sqm*(area as f32)*neighb.desirability).round();
-                        let value = (design.city.price_to_rent_ratio*(rent*12.)*neighb.desirability).round() as usize;
-                        let occupancy = max(1, ((area as f32)/(neighb.sqm_per_occupant as f32)).round() as usize);
+                        let area = rng.gen_range(neighb.min_area, neighb.max_area) as f32;
+                        let rent = design.city.price_per_sqm*area*neighb.desirability;
+                        let value = design.city.price_to_rent_ratio*(rent*12.)*neighb.desirability;
+                        let occupancy = max(1, (area/neighb.sqm_per_occupant as f32).round() as usize);
                         let id = units.len();
                         let unit = Unit {
                             id: id,
                             pos: p.pos,
-                            rent: rent as usize,
+                            rent: rent,
                             occupancy: occupancy,
                             area: area,
                             value: value,
                             condition: 1.0,
-                            tenants: HashSet::new(),
+                            tenants: FnvHashSet::default(),
                             offers: Vec::new(),
                             months_vacant: 0,
                             lease_month: 0,
@@ -169,7 +169,7 @@ impl City {
         let parks: Vec<Position> = parcels.values().filter(|p| p.typ == ParcelType::Park).into_iter().map(|p| p.pos).collect();
         for p in parcels.values_mut().filter(|p| p.typ == ParcelType::Residential) {
             let park_dist = if parks.len() > 0 {
-                parks.iter().map(|&o| grid.distance(p.pos, o)).fold(1./0., f64::min) as f32
+                parks.iter().map(|&o| grid.distance(p.pos, o)).fold(1./0., f32::min)
             } else {
                 1.
             };
@@ -202,7 +202,7 @@ impl City {
         for (pos, b) in buildings.iter() {
             for &u_id in b.units.iter() {
                 let u = &mut units[u_id];
-                u.value = (design.city.price_to_rent_ratio * ((u.rent*12) as f32) * parcels[pos].desirability).round() as usize;
+                u.value = design.city.price_to_rent_ratio * u.rent * 12. * parcels[pos].desirability;
             }
         }
 
@@ -221,18 +221,18 @@ impl City {
 
 pub struct Unit {
     pub id: usize,
-    pub rent: usize,
+    pub rent: f32,
     pub occupancy: usize,
     pub condition: f32,
-    pub area: usize,
-    pub value: usize,
-    pub tenants: HashSet<usize>,
+    pub area: f32,
+    pub value: f32,
+    pub tenants: FnvHashSet<usize>,
     pub months_vacant: usize,
     pub lease_month: usize,
     pub owner: (AgentType, usize),
     pub pos: Position,
     pub recently_sold: bool,
-    pub offers: Vec<(AgentType, usize, usize)> // landlord type, landlord id, offer amount
+    pub offers: Vec<(AgentType, usize, f32)> // landlord type, landlord id, offer amount
 }
 
 impl Unit {
@@ -245,11 +245,11 @@ impl Unit {
     }
 
     pub fn rent_per_area(&self) -> f32 {
-        self.rent as f32/self.area as f32
+        self.rent/self.area
     }
 
     pub fn value_per_area(&self) -> f32 {
-        self.value as f32/self.area as f32
+        self.value/self.area
     }
 }
 

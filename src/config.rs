@@ -7,7 +7,7 @@ use rand::Rng;
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "UPPERCASE")]
 pub struct Config {
-    pub doma_starting_funds: i32,
+    pub doma_starting_funds: f32,
     pub doma_p_rent_share: f32,
     pub doma_p_reserves: f32,
     pub doma_p_expenses: f32,

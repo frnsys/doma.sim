@@ -27,7 +27,6 @@ use std::os::unix::fs::symlink;
 use serde_json::json;
 use chrono::prelude::*;
 
-
 fn main() {
     let design_id = "philadelphia";
     let design = design::load_design(design_id);
@@ -45,6 +44,7 @@ fn main() {
 
     let mut history = Vec::new();
     let mut pb = ProgressBar::new(steps as u64);
+
     for step in 0..steps {
         sim.step(step, &mut rng);
 
