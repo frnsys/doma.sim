@@ -96,7 +96,7 @@ fn main() {
         for step in 0..steps {
             if debug || speedup || play.all_players_ready() {
                 if !debug {
-                    play.sync_step(step).unwrap();
+                    play.sync_step(step, steps).unwrap();
                     play.process_commands(&mut sim.tenants, &mut sim.city.units, &mut sim.doma).unwrap();
                 }
 
@@ -111,7 +111,7 @@ fn main() {
                         speedup = true;
                     }
 
-                    sync::sync(step, &sim.city).unwrap();
+                    sync::sync(step, &sim.city, &sim.design, stats::stats(&sim)).unwrap();
                     play.sync_players(&sim.tenants, &sim.city).unwrap();
                     play.reset_ready_players().unwrap();
 

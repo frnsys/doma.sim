@@ -1,6 +1,6 @@
 use fnv::FnvHashMap;
 use redis::Commands;
-use serde::Deserialize;
+use serde::{Serialize, Deserialize};
 
 #[derive(Deserialize, Debug)]
 pub struct Design {
@@ -9,7 +9,7 @@ pub struct Design {
     pub city: CityConfig,
 }
 
-#[derive(Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Neighborhood {
     pub desirability: f32,
@@ -19,6 +19,7 @@ pub struct Neighborhood {
     pub max_area: u32,
     pub sqm_per_occupant: u32,
     pub p_commercial: f32,
+    pub color: String
 }
 
 #[derive(Deserialize, Debug)]

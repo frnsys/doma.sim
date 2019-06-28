@@ -134,7 +134,7 @@ impl Tenant {
 
         // Adjust rent by last DOMA dividend
         let rent_per_tenant = f32::max(1., unit.rent / n_tenants);
-        let adjusted_rent_per_tenant = f32::min(rent_per_tenant, self.last_dividend);
+        let adjusted_rent_per_tenant = rent_per_tenant - f32::min(rent_per_tenant, self.last_dividend);
 
         if self.income < adjusted_rent_per_tenant {
             0.

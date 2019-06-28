@@ -25,16 +25,16 @@ pub enum SimState {
 
 #[derive(Display, PartialEq, Debug, Deserialize)]
 enum Command {
-    SelectTenant(usize, usize), // player_id, tenant_id
-    ReleaseTenant(usize),       // player_id
-    MoveTenant(usize, usize),   // player_id, unit_id
-    DOMAAdd(usize, f32),        // player_id, amount
+    SelectTenant(String, usize), // player_id, tenant_id
+    ReleaseTenant(String),       // player_id
+    MoveTenant(String, usize),   // player_id, unit_id
+    DOMAAdd(String, f32),        // player_id, amount
 }
 
 
 pub struct PlayManager {
     con: Connection,
-    players: HashMap<usize, usize>
+    players: HashMap<String, usize>
 }
 
 impl PlayManager {
@@ -116,8 +116,9 @@ impl PlayManager {
         thread::sleep(Duration::from_secs(seconds));
     }
 
-    pub fn sync_step(&self, step: usize) -> redis::RedisResult<()> {
-        self.con.set("game_step", step)
+    pub fn sync_step(&self, step: usize, steps: usize) -> redis::RedisResult<()> {
+        self.con.set("game_step", step)?;
+        self.con.set("game_progress", step as f32/steps as f32)
     }
 
     pub fn wait_turn(&self, seconds: u64) {
@@ -128,7 +129,7 @@ impl PlayManager {
     }
 
     fn set_state(&self, state: SimState) -> redis::RedisResult<()> {
-        self.con.set("game_state", state.to_string())?;
+        self.con.set("game_state", state.to_string().to_lowercase())?;
         Ok(())
     }
 

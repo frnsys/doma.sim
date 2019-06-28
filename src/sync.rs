@@ -1,10 +1,11 @@
 use super::city::City;
+use super::design::Design;
 use md5::Digest;
 use redis::Commands;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 
-pub fn jsonify(month: usize, city: &City) -> Value {
+pub fn jsonify(month: usize, city: &City, design: &Design, stats: Value) -> Value {
     let mut parcels: HashMap<isize, HashMap<isize, Value>> = HashMap::new();
     let mut buildings: HashMap<String, Value> = HashMap::new();
     let mut units: HashMap<usize, Value> = HashMap::new();
@@ -62,16 +63,18 @@ pub fn jsonify(month: usize, city: &City) -> Value {
             "parcels": parcels
         },
         "buildings": buildings,
-        "units": units
+        "neighborhoods": design.neighborhoods,
+        "units": units,
+        "stats": stats
     })
 }
 
-pub fn sync(month: usize, city: &City) -> redis::RedisResult<()> {
+pub fn sync(month: usize, city: &City, design: &Design, stats: Value) -> redis::RedisResult<()> {
     // TODO stats
     let client = redis::Client::open("redis://127.0.0.1/1")?;
     let con = client.get_connection()?;
 
-    let state_serialized = jsonify(month, city).to_string();
+    let state_serialized = jsonify(month, city, design, stats).to_string();
     let hash = md5::Md5::digest(state_serialized.as_bytes());
 
     con.set("state", state_serialized)?;
