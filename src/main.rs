@@ -31,7 +31,7 @@ use std::path::Path;
 
 fn save_run_data(sim: &Simulation, history: &Vec<Value>, conf: &Config) {
     let now: DateTime<Utc> = Utc::now();
-    let now_str = now.format("%Y.%m.%d.%H.%M").to_string();
+    let now_str = now.format("%Y.%m.%d.%H.%M.%S").to_string();
     let results = json!({
         "history": history,
         "meta": {
@@ -97,9 +97,9 @@ fn main() {
             if debug || speedup || play.all_players_ready() {
                 if !debug {
                     play.sync_step(step).unwrap();
+                    play.process_commands(&mut sim.tenants, &mut sim.city.units, &mut sim.doma).unwrap();
                 }
 
-                // TODO commands
                 sim.step(step, &mut rng, &conf.sim);
 
                 // Fast forwarding into the future

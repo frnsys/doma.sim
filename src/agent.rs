@@ -107,7 +107,16 @@ impl Tenant {
 
                 self.unit = Some(best_id);
                 let unit = &mut city.units[best_id];
+
+                // If unit was vacant, this is a new lease
+                if unit.vacant() {
+                    unit.lease_month = month % 12;
+                }
+
                 unit.tenants.insert(self.id);
+
+                // Remove unit if it no longer has
+                // any vacancies
                 if unit.vacancies() == 0 {
                     vacant_units.retain(|&u_id| u_id != best_id);
                 }
@@ -441,9 +450,10 @@ impl DOMA {
         // Pay dividends
         let p_dividend = 1.0 - self.p_reserves - self.p_expenses;
         let dividends = rent * p_dividend;
+        let total_shares: f32 = self.shares.values().sum();
         for (&tenant_id, share) in &self.shares {
             let tenant = &mut tenants[tenant_id];
-            tenant.last_dividend = dividends * share;
+            tenant.last_dividend = dividends * share/total_shares;
         }
         self.funds += rent * self.p_reserves;
 
@@ -505,5 +515,11 @@ impl DOMA {
             let unit = &mut city.units[id];
             unit.offers.push((AgentType::DOMA, 0, value));
         }
+    }
+
+    pub fn add_funds(&mut self, tenant_id: usize, amount: f32) {
+        self.funds += amount;
+        let share = self.shares.entry(tenant_id).or_insert(0.);
+        *share += amount;
     }
 }

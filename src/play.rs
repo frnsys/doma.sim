@@ -1,14 +1,13 @@
 use std::thread;
-use std::str::FromStr;
-use std::time::{Duration};
+use serde::Deserialize;
 use redis::{Commands, Connection};
-use strum_macros::{Display, EnumString};
-use super::agent::{Tenant};
-use super::city::{City};
+use strum_macros::{Display};
+use super::agent::{Tenant, DOMA};
+use super::city::{City, Unit};
 use rand::seq::SliceRandom;
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::time::{SystemTime, UNIX_EPOCH};
+use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 /*
  * TODO
@@ -24,13 +23,12 @@ pub enum SimState {
     Finished
 }
 
-#[derive(Display, PartialEq, Debug, EnumString)]
+#[derive(Display, PartialEq, Debug, Deserialize)]
 enum Command {
-    Restart,
-    SelectTenant,
-    ReleaseTenant,
-    MoveTenant,
-    DOMAAdd
+    SelectTenant(usize, usize), // player_id, tenant_id
+    ReleaseTenant(usize),       // player_id
+    MoveTenant(usize, usize),   // player_id, unit_id
+    DOMAAdd(usize, f32),        // player_id, amount
 }
 
 
@@ -62,11 +60,6 @@ impl PlayManager {
                 "unit": t.unit
             }).to_string()).unwrap();
         }
-    }
-
-    pub fn choose_tenant(&mut self, player_id: usize, tenant_id: usize, tenants: &mut Vec<Tenant>) {
-        self.players.insert(player_id, tenant_id);
-        tenants[tenant_id].player = true;
     }
 
     pub fn release_player_tenants(&self, tenants: &mut Vec<Tenant>) {
@@ -179,33 +172,55 @@ impl PlayManager {
         all_players_ready
     }
 
-    pub fn process_commands(&self, tenants: &mut Vec<Tenant>) {
-        // TODO
-        // Need to structure commands in a way that rust can handle...
-        // let cmds_raw: Vec<String> = self.con.lrange("cmds", 0, -1).unwrap();
-        // let cmds = cmds_raw.iter().map(|c| serde_json::from_str(c).unwrap())
-        // let v: Value = serde_json::from_str(data)?;
-        // for c in cmds {
-        //     match Command::from_str(&c) {
-        //         Ok(cmd) => {
-        //             match cmd {
-        //                 Command::Restart => {
-        //                     // TODO
-        //                 },
-        //                 Command::SelectTenant => {
-        //                     pid, tid = data['player_id'], data['tenant_id']
-        //                     sim.players[pid] = tid
-        //                     tenant = sim.tenants_idx[tid]
-        //                     tenant.player = pid
-        //                     # Evicted
-        //                     if tenant.unit:
-        //                         tenant.unit.move_out(tenant)
-        //                 }
-        //             }
-        //         },
-        //         Err(_) => {}
-        //     }
-        // }
-        // self.con.del("cmds").unwrap();
+    pub fn process_commands(&mut self, tenants: &mut Vec<Tenant>, units: &mut Vec<Unit>, doma: &mut DOMA) -> redis::RedisResult<()> {
+        let cmds: Vec<String> = self.con.lrange("cmds", 0, -1)?;
+        for cmd in cmds {
+            match serde_json::from_str(&cmd).unwrap() {
+                Command::SelectTenant(p_id, t_id) => {
+                    self.players.insert(p_id, t_id);
+                    let tenant = &mut tenants[t_id];
+                    tenant.player = true;
+
+                    // Evict the tenant
+                    match tenant.unit {
+                        Some(u_id) => {
+                            let unit = &mut units[u_id];
+                            unit.tenants.remove(&t_id);
+                            tenant.unit = None;
+                        },
+                        None => {}
+                    }
+                },
+                Command::ReleaseTenant(p_id) => {
+                    match self.players.remove(&p_id) {
+                        Some(t_id) => {
+                            tenants[t_id].player = false;
+                        },
+                        None => {}
+                    }
+                },
+                Command::MoveTenant(p_id, u_id) => {
+                    match self.players.get(&p_id) {
+                        Some(&t_id) => {
+                            let unit = &mut units[u_id];
+                            unit.tenants.insert(t_id);
+                            let tenant = &mut tenants[t_id];
+                            tenant.unit = Some(u_id);
+                        },
+                        None => {}
+                    }
+                },
+                Command::DOMAAdd(p_id, amount) => {
+                    match self.players.get(&p_id) {
+                        Some(&t_id) => {
+                            doma.add_funds(t_id, amount);
+                        },
+                        None => {}
+                    }
+                }
+            }
+        }
+
+        self.con.del("cmds")
     }
 }
