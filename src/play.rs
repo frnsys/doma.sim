@@ -8,6 +8,7 @@ use super::city::{City};
 use rand::seq::SliceRandom;
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use std::time::{SystemTime, UNIX_EPOCH};
 
 /*
  * TODO
@@ -63,6 +64,17 @@ impl PlayManager {
         }
     }
 
+    pub fn choose_tenant(&mut self, player_id: usize, tenant_id: usize, tenants: &mut Vec<Tenant>) {
+        self.players.insert(player_id, tenant_id);
+        tenants[tenant_id].player = true;
+    }
+
+    pub fn release_player_tenants(&self, tenants: &mut Vec<Tenant>) {
+        for &tenant_id in self.players.values() {
+            tenants[tenant_id].player = false;
+        }
+    }
+
     pub fn sync_players(&self, tenants: &Vec<Tenant>, city: &City) -> redis::RedisResult<()> {
         for (player_id, &t_id) in &self.players {
             let tenant = &tenants[t_id];
@@ -115,8 +127,11 @@ impl PlayManager {
         self.con.set("game_step", step)
     }
 
-    pub fn set_turn_timer(&self, start: u64, end: u64) -> redis::RedisResult<()> {
-        self.con.set("turn_timer", format!("{}-{}", start, end))
+    pub fn wait_turn(&self, seconds: u64) {
+        let start = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+        let end = start + seconds;
+        let _: () = self.con.set("turn_timer", format!("{}-{}", start, end)).unwrap();
+        self.wait(seconds)
     }
 
     fn set_state(&self, state: SimState) -> redis::RedisResult<()> {

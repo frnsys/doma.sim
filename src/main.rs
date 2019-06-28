@@ -28,7 +28,6 @@ use serde_json::{json, Value};
 use std::fs;
 use std::os::unix::fs::symlink;
 use std::path::Path;
-use std::time::{SystemTime, UNIX_EPOCH};
 
 fn save_run_data(sim: &Simulation, history: &Vec<Value>, conf: &Config) {
     let now: DateTime<Utc> = Utc::now();
@@ -108,20 +107,16 @@ fn main() {
                     if step > conf.play.turn_limit && !speedup {
                         println!("Fast forwarding...");
                         play.set_fast_forward().unwrap();
+                        play.release_player_tenants(&mut sim.tenants);
                         speedup = true;
-
-                        // TODO relinquish player control
                     }
+
                     sync::sync(step, &sim.city).unwrap();
                     play.sync_players(&sim.tenants, &sim.city).unwrap();
                     play.reset_ready_players().unwrap();
 
                     if !speedup {
-                        // TODO move to play
-                        let start = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-                        let end = start + conf.play.min_step_delay;
-                        play.set_turn_timer(start, end).unwrap();
-                        play.wait(conf.play.min_step_delay);
+                        play.wait_turn(conf.play.min_step_delay);
                     }
                 } else {
                     history.push(stats::stats(&sim));

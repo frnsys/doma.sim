@@ -29,6 +29,7 @@ pub struct Tenant {
     pub work: Position,
     pub units: Vec<usize>,
     pub last_dividend: f32,
+    pub player: bool
 }
 
 impl Tenant {

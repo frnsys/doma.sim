@@ -50,6 +50,7 @@ impl Simulation {
                     income: income,
                     work: work_pos,
                     last_dividend: 0.,
+                    player: false,
                 };
 
                 let lease_month = rng.gen_range(0, 11) as usize;
@@ -175,13 +176,15 @@ impl Simulation {
             .map(|u| u.id)
             .collect();
         for tenant in &mut self.tenants {
-            tenant.step(
-                &mut self.city,
-                time,
-                &mut vacant_units,
-                &mut rng,
-                &conf,
-            );
+            if !tenant.player {
+                tenant.step(
+                    &mut self.city,
+                    time,
+                    &mut vacant_units,
+                    &mut rng,
+                    &conf,
+                );
+            }
         }
 
         if time % 12 == 0 {
