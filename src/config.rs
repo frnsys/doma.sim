@@ -7,6 +7,23 @@ use std::io::BufReader;
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "UPPERCASE")]
 pub struct Config {
+    pub sim: SimConfig,
+    pub play: PlayConfig,
+
+    #[serde(default)]
+    pub steps: usize,
+
+    #[serde(default)]
+    pub debug: bool,
+
+    #[serde(default)]
+    pub seed: u64,
+}
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "UPPERCASE")]
+pub struct SimConfig {
+    pub design_id: String,
     pub doma_starting_funds: f32,
     pub doma_p_rent_share: f32,
     pub doma_p_reserves: f32,
@@ -18,19 +35,17 @@ pub struct Config {
     pub trend_months: usize,
     pub rent_increase_rate: f32,
     pub moving_penalty: f32,
-
-    #[serde(default)]
-    pub steps: usize,
-
-    #[serde(default)]
-    pub debug: bool,
-
-    #[serde(default)]
-    pub sync: bool,
-
-    #[serde(default)]
-    pub seed: u64,
 }
+
+#[derive(Deserialize, Debug)]
+#[serde(rename_all = "UPPERCASE")]
+pub struct PlayConfig {
+    pub n_steps: usize,
+    pub turn_limit: usize,
+    pub min_step_delay: u64,
+    pub pause_between_runs: u64,
+}
+
 
 pub fn load_config() -> Config {
     let file = File::open("config.yaml").expect("could not open file");
@@ -45,11 +60,6 @@ pub fn load_config() -> Config {
     conf.debug = match env::var("DEBUG") {
         Ok(debug) => debug == "1",
         Err(_) => false,
-    };
-
-    conf.sync = match env::var("SYNC") {
-        Ok(sync) => sync == "1",
-        Err(_) => true,
     };
 
     let mut rng = rand::thread_rng();

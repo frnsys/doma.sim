@@ -1,6 +1,6 @@
 use super::agent::{AgentType, Landlord, Tenant, DOMA};
 use super::city::{City, Unit};
-use super::config::Config;
+use super::config::SimConfig;
 use super::design::Design;
 use noise::NoiseFn;
 use rand::distributions::WeightedIndex;
@@ -12,12 +12,11 @@ pub struct Simulation {
     pub doma: DOMA,
     pub tenants: Vec<Tenant>,
     pub landlords: Vec<Landlord>,
-    design: Design,
-    config: Config,
+    design: Design
 }
 
 impl Simulation {
-    pub fn new(mut design: Design, config: Config, mut rng: &mut StdRng) -> Simulation {
+    pub fn new(mut design: Design, config: &SimConfig, mut rng: &mut StdRng) -> Simulation {
         // Generate city from provided design
         let mut city = City::new(&mut design, &mut rng);
 
@@ -128,11 +127,10 @@ impl Simulation {
             tenants: tenants,
             doma: doma,
             design: design,
-            config: config,
         }
     }
 
-    pub fn step(&mut self, time: usize, mut rng: &mut StdRng) {
+    pub fn step(&mut self, time: usize, mut rng: &mut StdRng, conf: &SimConfig) {
         let mut transfers = Vec::new();
         for tenant in &mut self.tenants {
             transfers.extend(
@@ -165,7 +163,7 @@ impl Simulation {
                 time,
                 self.design.city.price_to_rent_ratio,
                 &mut rng,
-                &self.config,
+                &conf,
             );
         }
 
@@ -182,7 +180,7 @@ impl Simulation {
                 time,
                 &mut vacant_units,
                 &mut rng,
-                &self.config,
+                &conf,
             );
         }
 
@@ -196,11 +194,11 @@ impl Simulation {
                 let sold: Vec<&Unit> = units.iter().filter(|u| u.recently_sold).cloned().collect();
                 let mean_value_per_area = if sold.len() == 0 {
                     units.iter().fold(0., |acc, u| {
-                        acc + (u.value_per_area() * self.config.base_appreciation)
+                        acc + (u.value_per_area() * conf.base_appreciation)
                     }) / units.len() as f32
                 } else {
                     sold.iter().fold(0., |acc, u| {
-                        acc + (u.value_per_area() * self.config.base_appreciation)
+                        acc + (u.value_per_area() * conf.base_appreciation)
                     }) / sold.len() as f32
                 };
 
@@ -220,14 +218,14 @@ impl Simulation {
         for (neighb_id, parcel_ids) in &self.city.residential_parcels_by_neighborhood {
             let last_val = if time > 0 {
                 self.city.neighborhood_trends[neighb_id].get([
-                    (time - 1) as f64 / self.config.desirability_stretch_factor,
+                    (time - 1) as f64 / conf.desirability_stretch_factor,
                     0.,
                 ])
             } else {
                 0.
             };
             let val = self.city.neighborhood_trends[neighb_id]
-                .get([time as f64 / self.config.desirability_stretch_factor, 0.]);
+                .get([time as f64 / conf.desirability_stretch_factor, 0.]);
             let change = (val - last_val) as f32;
             for p in parcel_ids {
                 let parcel = self.city.parcels.get_mut(p).unwrap();

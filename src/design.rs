@@ -43,7 +43,7 @@ pub struct Map {
     pub layout: Vec<Vec<Option<String>>>,
 }
 
-pub fn load_design(design_id: &str) -> Design {
+pub fn load_design(design_id: &String) -> Design {
     let client = redis::Client::open("redis://127.0.0.1/1").unwrap();
     let con = client.get_connection().unwrap();
     let design_key = format!("design:{}", design_id);

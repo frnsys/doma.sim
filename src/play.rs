@@ -1,5 +1,6 @@
-use rand::Rng;
+use std::thread;
 use std::str::FromStr;
+use std::time::{Duration};
 use redis::{Commands, Connection};
 use strum_macros::{Display, EnumString};
 use super::agent::{Tenant};
@@ -106,6 +107,18 @@ impl PlayManager {
         Ok(())
     }
 
+    pub fn wait(&self, seconds: u64) {
+        thread::sleep(Duration::from_secs(seconds));
+    }
+
+    pub fn sync_step(&self, step: usize) -> redis::RedisResult<()> {
+        self.con.set("game_step", step)
+    }
+
+    pub fn set_turn_timer(&self, start: u64, end: u64) -> redis::RedisResult<()> {
+        self.con.set("turn_timer", format!("{}-{}", start, end))
+    }
+
     fn set_state(&self, state: SimState) -> redis::RedisResult<()> {
         self.con.set("game_state", state.to_string())?;
         Ok(())
@@ -132,6 +145,7 @@ impl PlayManager {
     }
 
     pub fn reset(&mut self) -> redis::RedisResult<()> {
+        self.con.del("game_step")?;
         self.con.del("cmds")?;
         self.con.del("active_players")?;
         self.players.clear();
@@ -144,7 +158,7 @@ impl PlayManager {
             let ready_players: Vec<String> = self.con.lrange("ready_players", 0, -1).unwrap();
             let active_players: Vec<String> = self.con.lrange("active_players", 0, -1).unwrap();
             all_players_ready = active_players.iter().all(|id| {
-                active_players.contains(id)
+                ready_players.contains(id)
             });
         }
         all_players_ready
