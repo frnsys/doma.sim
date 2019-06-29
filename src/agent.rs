@@ -213,11 +213,11 @@ pub struct Landlord {
 }
 
 impl Landlord {
-    pub fn new(id: usize, neighborhood_ids: Vec<usize>) -> Landlord {
+    pub fn new(id: usize, n_neighborhoods: usize) -> Landlord {
         let mut rent_obvs = FnvHashMap::default();
         let mut trend_ests = FnvHashMap::default();
         let mut invest_ests = FnvHashMap::default();
-        for id in neighborhood_ids {
+        for id in 0..n_neighborhoods {
             rent_obvs.insert(id, Vec::new());
             trend_ests.insert(id, 0.);
             invest_ests.insert(id, 0.);
@@ -290,7 +290,7 @@ impl Landlord {
             neighbs[neighb_dist.sample(rng)]
         };
         let est_future_rent = self.trend_ests[&neighb_id];
-        let sample = city.units_by_neighborhood[&neighb_id].choose_multiple(rng, conf.sample_size);
+        let sample = city.units_by_neighborhood[neighb_id].choose_multiple(rng, conf.sample_size);
         for &u_id in sample {
             let unit = &mut city.units[u_id];
             let parcel = &city.parcels[&unit.pos];
@@ -320,7 +320,7 @@ impl Landlord {
 
         for (&neighb_id, rent_history) in &mut self.rent_obvs {
             let n = neighborhoods.entry(neighb_id).or_insert(Vec::new());
-            let sample = city.units_by_neighborhood[&neighb_id]
+            let sample = city.units_by_neighborhood[neighb_id]
                 .choose_multiple(rng, sample_size)
                 .map(|&u_id| city.units[u_id].rent_per_area());
             n.extend(sample);

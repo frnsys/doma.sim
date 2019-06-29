@@ -24,7 +24,7 @@ pub fn stats(sim: &Simulation) -> Value {
     let mut doma_data = (0., 0.);
 
     let mut neighborhood_stats = HashMap::new();
-    for (neighb_id, unit_ids) in &sim.city.units_by_neighborhood {
+    for (neighb_id, unit_ids) in sim.city.units_by_neighborhood.iter().enumerate() {
         if unit_ids.len() == 0 {
             continue;
         }

@@ -16,13 +16,13 @@ pub struct Simulation {
 }
 
 impl Simulation {
-    pub fn new(mut design: Design, config: &SimConfig, mut rng: &mut StdRng) -> Simulation {
+    pub fn new(design: Design, config: &SimConfig, mut rng: &mut StdRng) -> Simulation {
         // Generate city from provided design
-        let mut city = City::new(&mut design, &mut rng);
+        let mut city = City::new(&design, &mut rng);
 
         // Create landlords
         let mut landlords: Vec<Landlord> = (0..design.city.landlords)
-            .map(|i| Landlord::new(i as usize, design.neighborhoods.keys().cloned().collect()))
+            .map(|i| Landlord::new(i as usize, design.neighborhoods.len()))
             .collect();
 
         // Create tenants
@@ -35,7 +35,8 @@ impl Simulation {
         }
         let work_dist = WeightedIndex::new(commercial_weights).unwrap();
         let vacancies: Vec<usize> = city.units.iter().map(|u| u.id).collect();
-        let mut tenants: Vec<Tenant> = (0..design.city.population)
+        // let mut tenants: Vec<Tenant> = (0..design.city.population)
+        let mut tenants: Vec<Tenant> = (0..100000)
             .map(|i| {
                 let tenant_id = i as usize;
                 let income_range = &design.city.incomes[income_dist.sample(&mut rng)];
@@ -188,7 +189,7 @@ impl Simulation {
 
         if time % 12 == 0 {
             // Appraise
-            for (_, unit_ids) in &self.city.units_by_neighborhood {
+            for unit_ids in &self.city.units_by_neighborhood {
                 let units: Vec<&Unit> = unit_ids
                     .iter()
                     .map(|&u_id| &self.city.units[u_id])
@@ -217,7 +218,7 @@ impl Simulation {
         self.doma.step(&mut self.city, &mut self.tenants, &mut rng);
 
         // Desirability changes, random walk
-        for (neighb_id, parcel_ids) in &self.city.residential_parcels_by_neighborhood {
+        for (neighb_id, parcel_ids) in self.city.residential_parcels_by_neighborhood.iter().enumerate() {
             let last_val = if time > 0 {
                 self.city.neighborhood_trends[neighb_id].get([
                     (time - 1) as f64 / conf.desirability_stretch_factor,

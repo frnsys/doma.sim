@@ -1,7 +1,7 @@
 use rand::Rng;
 use std::cmp::{max};
 use std::str::FromStr;
-use super::design::Design;
+use super::design::{Design, Neighborhood};
 use super::grid::{HexGrid, Position};
 use super::agent::{AgentType};
 use strum_macros::{EnumString, Display};
@@ -30,18 +30,27 @@ pub struct City {
     pub buildings: FnvHashMap<Position, Building>,
     pub parcels: FnvHashMap<Position, Parcel>,
     pub units: Vec<Unit>,
-    pub units_by_neighborhood: FnvHashMap<usize, Vec<usize>>,
-    pub residential_parcels_by_neighborhood: FnvHashMap<usize, Vec<Position>>,
+    pub units_by_neighborhood: Vec<Vec<usize>>,
+    pub residential_parcels_by_neighborhood: Vec<Vec<Position>>,
     pub commercial: FnvHashMap<Position, usize>,
-    pub neighborhood_trends: FnvHashMap<usize, OpenSimplex>
+    pub neighborhood_trends: Vec<OpenSimplex>
 }
 
 
 impl City {
-    pub fn new(design: &mut Design, rng: &mut StdRng) -> City {
+    pub fn new(design: &Design, rng: &mut StdRng) -> City {
         let rows = design.map.layout.len();
         let cols = design.map.layout[0].len();
         let grid = HexGrid::new(rows, cols);
+
+        // Re-id neighborhoods so they are incremental values
+        let mut neighborhoods: Vec<Neighborhood> = Vec::new();
+        let mut neighb_ids: FnvHashMap<usize, usize> = FnvHashMap::default();
+        for (i, (&id, neighb)) in design.neighborhoods.iter().enumerate() {
+            neighb_ids.insert(id, i);
+            neighborhoods.push(neighb.clone());
+        }
+
 
         // Initialize parcels
         let mut parcels = FnvHashMap::default();
@@ -58,7 +67,13 @@ impl City {
                             desirability: 0.,
                             neighborhood: match neighb_id {
                                 -1 => None,
-                                id => Some(id as usize)
+                                id => {
+                                    let k = id as usize;
+                                    if !neighb_ids.contains_key(&k) {
+                                        neighb_ids.insert(k, neighb_ids.keys().len());
+                                    }
+                                    Some(neighb_ids[&k])
+                                }
                             }
                         };
                         parcels.insert((r as isize, c as isize), parcel);
@@ -71,24 +86,25 @@ impl City {
         let mut units = Vec::new();
         let mut buildings = FnvHashMap::default();
         let mut commercial = FnvHashMap::default();
-        let mut units_by_neighborhood = FnvHashMap::default();
-        let mut residential_parcels_by_neighborhood = FnvHashMap::default();
+        let mut units_by_neighborhood = Vec::new();
+        let mut residential_parcels_by_neighborhood = Vec::new();
 
         // Group units by neighborhood for lookup
         // and create neighborhood desirability trends
-        let mut neighborhood_trends = FnvHashMap::default();
-        for &id in design.neighborhoods.keys() {
+        let mut neighborhood_trends = Vec::new();
+        for _ in neighb_ids.values() {
             let mut noise = OpenSimplex::new();
             noise = noise.set_seed(rng.gen());
-            neighborhood_trends.insert(id, noise);
-            units_by_neighborhood.insert(id, Vec::new());
+            neighborhood_trends.push(noise);
+            units_by_neighborhood.push(Vec::new());
+            residential_parcels_by_neighborhood.push(Vec::new());
         }
 
         // Adjust neighborhood desirabilities
         // to be in a fixed range (0.5-1.5)
         let mut nei_des_min = 1./0.;
         let mut nei_des_max = 0.;
-        for n in design.neighborhoods.values() {
+        for n in &neighborhoods {
             if n.desirability > nei_des_max {
                 nei_des_max = n.desirability;
             }
@@ -97,7 +113,7 @@ impl City {
             }
         }
         let nei_des_range = nei_des_max - nei_des_min;
-        for n in design.neighborhoods.values_mut() {
+        for n in &mut neighborhoods {
             n.desirability = 1. + (n.desirability - nei_des_min)/(nei_des_range) - 0.5;
         }
 
@@ -105,11 +121,11 @@ impl City {
         for p in parcels.values().filter(|p| p.typ == ParcelType::Residential) {
             match p.neighborhood {
                 Some(neighb_id) => {
-                    let neighb = design.neighborhoods.get(&neighb_id).unwrap();
+                    let neighb = &neighborhoods[neighb_id];
                     let mut n_units = rng.gen_range(neighb.min_units, neighb.max_units);
                     let mut n_commercial = 0;
 
-                    residential_parcels_by_neighborhood.entry(neighb_id).or_insert(Vec::new()).push(p.pos);
+                    residential_parcels_by_neighborhood[neighb_id].push(p.pos);
 
                     // Houses have no commercial floors
                     // Need to keep these divisible by 4 for towers
@@ -145,7 +161,7 @@ impl City {
                             recently_sold: false,
                             owner: (AgentType::Landlord, 0) // Dummy placeholder
                         };
-                        units_by_neighborhood.get_mut(&neighb_id).unwrap().push(id);
+                        units_by_neighborhood[neighb_id].push(id);
                         units.push(unit);
                         building_units.push(id);
                     }
@@ -184,7 +200,7 @@ impl City {
                 }).fold(0, |acc, item| acc + item);
 
             let neighb = match p.neighborhood {
-                Some(n) => design.neighborhoods.get(&n).unwrap().desirability,
+                Some(n) => neighborhoods[n].desirability,
                 _ => 0.
             };
             p.desirability = (1./park_dist * 10.) + neighb + (n_commercial as f32)/10.;
