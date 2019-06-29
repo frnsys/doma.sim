@@ -9,7 +9,64 @@ use fnv::{FnvHashMap, FnvHashSet};
 use noise::{OpenSimplex, Seedable};
 use rand::rngs::StdRng;
 
-#[derive(Display, PartialEq, Debug, EnumString)]
+pub struct PositionVector<T: Clone> {
+    dims: (isize, isize),
+    data: Vec<Option<T>>
+}
+
+impl<T: Clone> PositionVector<T> {
+    pub fn new(dims: (usize, usize)) -> PositionVector<T> {
+        PositionVector {
+            dims: (dims.0 as isize, dims.1 as isize),
+            data: vec![None; dims.0 * dims.1]
+        }
+    }
+
+    pub fn insert(&mut self, pos: &Position, val: T) {
+        let i = self.pos_to_index(pos);
+        self.data[i] = Some(val);
+    }
+
+    pub fn values<'a>(&'a self) -> impl Iterator<Item=&T> + 'a {
+        self.data.iter().filter_map(|v| v.as_ref())
+    }
+
+    pub fn values_mut<'a>(&'a mut self) -> impl Iterator<Item=&mut T> + 'a {
+        self.data.iter_mut().filter_map(|v| v.as_mut())
+    }
+
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item=(Position, &T)> + 'a {
+        self.data.iter().enumerate().filter_map(move |(i, v)| {
+            match v {
+                Some(val) => {
+                    Some((self.index_to_pos(i), val))
+                },
+                None => None
+            }
+        })
+    }
+
+    pub fn get(&self, pos: &Position) -> Option<&T> {
+        let i = self.pos_to_index(pos);
+        self.data[i].as_ref()
+    }
+
+    pub fn get_mut(&mut self, pos: &Position) -> Option<&mut T> {
+        let i = self.pos_to_index(pos);
+        self.data[i].as_mut()
+    }
+
+    fn pos_to_index(&self, pos: &Position) -> usize {
+        (self.dims.1 * pos.0 + pos.1) as usize
+    }
+
+    fn index_to_pos(&self, idx: usize) -> Position {
+        let i = idx as isize;
+        (i/self.dims.1, i%self.dims.1)
+    }
+}
+
+#[derive(Display, PartialEq, Debug, EnumString, Clone)]
 pub enum ParcelType {
     Residential,
     Industrial,
@@ -17,7 +74,7 @@ pub enum ParcelType {
     River
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Parcel {
     pub typ: ParcelType,
     pub desirability: f32,
@@ -27,12 +84,12 @@ pub struct Parcel {
 
 pub struct City {
     pub grid: HexGrid,
-    pub buildings: FnvHashMap<Position, Building>,
-    pub parcels: FnvHashMap<Position, Parcel>,
+    pub buildings: PositionVector<Building>,
+    pub parcels: PositionVector<Parcel>,
     pub units: Vec<Unit>,
     pub units_by_neighborhood: Vec<Vec<usize>>,
     pub residential_parcels_by_neighborhood: Vec<Vec<Position>>,
-    pub commercial: FnvHashMap<Position, usize>,
+    pub commercial: PositionVector<usize>,
     pub neighborhood_trends: Vec<OpenSimplex>
 }
 
@@ -53,7 +110,7 @@ impl City {
 
 
         // Initialize parcels
-        let mut parcels = FnvHashMap::default();
+        let mut parcels = PositionVector::new((rows, cols));
         for (r, row) in design.map.layout.iter().enumerate() {
             for (c, cell) in row.iter().enumerate() {
                 match cell {
@@ -79,7 +136,8 @@ impl City {
                                 }
                             }
                         };
-                        parcels.insert((r as isize, c as isize), parcel);
+                        let pos = (r as isize, c as isize);
+                        parcels.insert(&pos, parcel);
                     }
                     None => continue
                 }
@@ -87,8 +145,8 @@ impl City {
         }
 
         let mut units = Vec::new();
-        let mut buildings = FnvHashMap::default();
-        let mut commercial = FnvHashMap::default();
+        let mut buildings = PositionVector::new((rows, cols));
+        let mut commercial = PositionVector::new((rows, cols));
         let mut units_by_neighborhood = Vec::new();
         let mut residential_parcels_by_neighborhood = Vec::new();
 
@@ -169,13 +227,13 @@ impl City {
                         building_units.push(id);
                     }
 
-                    buildings.insert(p.pos, Building {
+                    buildings.insert(&p.pos, Building {
                         units: building_units,
                         n_commercial: n_commercial as usize
                     });
 
                     if n_commercial > 0 {
-                        commercial.insert(p.pos, n_commercial as usize);
+                        commercial.insert(&p.pos, n_commercial as usize);
                     }
                 },
                 None => continue
@@ -196,7 +254,7 @@ impl City {
             // Nearby commercial density
             let n_commercial = grid.radius(p.pos, 2).iter()
                 .map(|pos| {
-                    match buildings.get(pos) {
+                    match buildings.get(&pos) {
                         Some(b) => b.n_commercial,
                         _ => 0
                     }
@@ -221,7 +279,7 @@ impl City {
         for (pos, b) in buildings.iter() {
             for &u_id in b.units.iter() {
                 let u = &mut units[u_id];
-                u.value = design.city.price_to_rent_ratio * u.rent * 12. * parcels[pos].desirability;
+                u.value = design.city.price_to_rent_ratio * u.rent * 12. * parcels.get(&pos).unwrap().desirability;
             }
         }
 
@@ -273,7 +331,7 @@ impl Unit {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Building {
     pub units: Vec<usize>,
     pub n_commercial: usize

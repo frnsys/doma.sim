@@ -93,7 +93,7 @@ pub fn stats(sim: &Simulation) -> Value {
         n_parcels += parcels.len() as f32;
         let nei_mean_desirability = parcels
             .iter()
-            .fold(0., |acc, pos| acc + sim.city.parcels[pos].desirability);
+            .fold(0., |acc, pos| acc + sim.city.parcels.get(&pos).unwrap().desirability);
 
         neighborhood_stats.insert(
             neighb_id,

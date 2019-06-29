@@ -29,8 +29,8 @@ impl Simulation {
         let income_dist = WeightedIndex::new(design.city.incomes.iter().map(|i| i.p)).unwrap();
         let mut commercial = Vec::new();
         let mut commercial_weights = Vec::new();
-        for (pos, n) in &city.commercial {
-            commercial.push(*pos);
+        for (pos, n) in city.commercial.iter() {
+            commercial.push(pos);
             commercial_weights.push(n);
         }
         let work_dist = WeightedIndex::new(commercial_weights).unwrap();
@@ -56,7 +56,7 @@ impl Simulation {
                 let lease_month = rng.gen_range(0, 11) as usize;
                 let (best_id, best_desirability) = vacancies.iter().fold((0, 0.), |acc, &u_id| {
                     let u = &city.units[u_id];
-                    let p = &city.parcels[&u.pos];
+                    let p = &city.parcels.get(&u.pos).unwrap();
                     if u.vacancies() <= 0 {
                         acc
                     } else {

@@ -68,7 +68,7 @@ impl Tenant {
                 reconsider = elapsed > 0 && elapsed % 12 == 0;
                 if !reconsider {
                     // No longer can afford
-                    let parcel = &city.parcels[&unit.pos];
+                    let parcel = &city.parcels.get(&unit.pos).unwrap();
                     current_desirability = self.desirability(unit, parcel);
                     if current_desirability == 0. {
                         reconsider = true;
@@ -83,7 +83,7 @@ impl Tenant {
             let sample = vacant_units.choose_multiple(rng, conf.tenant_sample_size);
             let (best_id, best_desirability) = sample.fold((0, 0.), |acc, &u_id| {
                 let u = &city.units[u_id];
-                let p = &city.parcels[&u.pos];
+                let p = &city.parcels.get(&u.pos).unwrap();
                 if u.vacancies() <= 0 {
                     acc
                 } else {
@@ -168,7 +168,7 @@ impl Tenant {
                 // - since rents decrease as the apartment is vacant,
                 //   the longer the vacancy, the more likely they are to sell
                 // - maintenance costs become too much
-                let parcel = &city.parcels[&unit.pos];
+                let parcel = &city.parcels.get(&unit.pos).unwrap();
                 let est_value = unit.rent * 12. * price_to_rent_ratio * parcel.desirability;
 
                 // Find best offer, if any
@@ -293,7 +293,7 @@ impl Landlord {
         let sample = city.units_by_neighborhood[neighb_id].choose_multiple(rng, conf.sample_size);
         for &u_id in sample {
             let unit = &mut city.units[u_id];
-            let parcel = &city.parcels[&unit.pos];
+            let parcel = &city.parcels.get(&unit.pos).unwrap();
             let est_value =
                 est_future_rent * unit.area * 12. * price_to_rent_ratio * parcel.desirability; // TODO was *100
             if est_value > 0. && est_value > unit.value {
@@ -307,7 +307,7 @@ impl Landlord {
         for &u in &self.units {
             let unit = &city.units[u];
             if !unit.vacant() {
-                let parcel = &city.parcels[&unit.pos];
+                let parcel = &city.parcels.get(&unit.pos).unwrap();
                 match parcel.neighborhood {
                     Some(neighb_id) => {
                         let n = neighborhoods.entry(neighb_id).or_insert(Vec::new());
@@ -360,7 +360,7 @@ impl Landlord {
                 // - since rents decrease as the apartment is vacant,
                 //   the longer the vacancy, the more likely they are to sell
                 // - maintenance costs become too much
-                let parcel = &city.parcels[&unit.pos];
+                let parcel = &city.parcels.get(&unit.pos).unwrap();
                 let est_future_rent = self.trend_ests[&parcel.neighborhood.unwrap()];
                 let est_value =
                     est_future_rent * unit.area * 12. * price_to_rent_ratio * parcel.desirability;
