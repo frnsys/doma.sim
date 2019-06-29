@@ -10,7 +10,7 @@ pub fn jsonify(month: usize, city: &City, design: &Design, stats: Value) -> Valu
     let mut buildings: HashMap<String, Value> = HashMap::new();
     let mut units: HashMap<usize, Value> = HashMap::new();
 
-    for (pos, parcel) in &city.parcels {
+    for (pos, parcel) in city.parcels.iter() {
         let g = parcels.entry(pos.0).or_insert(HashMap::new());
         g.insert(
             pos.1,
@@ -23,7 +23,7 @@ pub fn jsonify(month: usize, city: &City, design: &Design, stats: Value) -> Valu
                 "desirability": parcel.desirability
             }),
         );
-        match &city.buildings.get(pos) {
+        match &city.buildings.get(&pos) {
             None => continue,
             Some(building) => {
                 let id = format!("{}_{}", pos.0, pos.1);

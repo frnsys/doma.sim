@@ -9,7 +9,7 @@ pub struct Design {
     pub city: CityConfig,
 }
 
-#[derive(Serialize, Deserialize, Debug)]
+#[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Neighborhood {
     pub desirability: f32,

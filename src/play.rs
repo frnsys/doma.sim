@@ -81,7 +81,7 @@ impl PlayManager {
             };
             let desirability = match unit {
                 Some(unit) => {
-                    let parcel = &city.parcels[&unit.pos];
+                    let parcel = &city.parcels.get(&unit.pos).unwrap();
                     adjusted_rent = tenant.adjusted_rent(&unit);
                     tenant.desirability(unit, parcel)
                 },

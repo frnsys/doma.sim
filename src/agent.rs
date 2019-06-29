@@ -68,7 +68,7 @@ impl Tenant {
                 reconsider = elapsed > 0 && elapsed % 12 == 0;
                 if !reconsider {
                     // No longer can afford
-                    let parcel = &city.parcels[&unit.pos];
+                    let parcel = &city.parcels.get(&unit.pos).unwrap();
                     current_desirability = self.desirability(unit, parcel);
                     if current_desirability == 0. {
                         reconsider = true;
@@ -83,7 +83,7 @@ impl Tenant {
             let sample = vacant_units.choose_multiple(rng, conf.tenant_sample_size);
             let (best_id, best_desirability) = sample.fold((0, 0.), |acc, &u_id| {
                 let u = &city.units[u_id];
-                let p = &city.parcels[&u.pos];
+                let p = &city.parcels.get(&u.pos).unwrap();
                 if u.vacancies() <= 0 {
                     acc
                 } else {
@@ -168,7 +168,7 @@ impl Tenant {
                 // - since rents decrease as the apartment is vacant,
                 //   the longer the vacancy, the more likely they are to sell
                 // - maintenance costs become too much
-                let parcel = &city.parcels[&unit.pos];
+                let parcel = &city.parcels.get(&unit.pos).unwrap();
                 let est_value = unit.rent * 12. * price_to_rent_ratio * parcel.desirability;
 
                 // Find best offer, if any
@@ -213,11 +213,11 @@ pub struct Landlord {
 }
 
 impl Landlord {
-    pub fn new(id: usize, neighborhood_ids: Vec<usize>) -> Landlord {
+    pub fn new(id: usize, n_neighborhoods: usize) -> Landlord {
         let mut rent_obvs = FnvHashMap::default();
         let mut trend_ests = FnvHashMap::default();
         let mut invest_ests = FnvHashMap::default();
-        for id in neighborhood_ids {
+        for id in 0..n_neighborhoods {
             rent_obvs.insert(id, Vec::new());
             trend_ests.insert(id, 0.);
             invest_ests.insert(id, 0.);
@@ -290,10 +290,10 @@ impl Landlord {
             neighbs[neighb_dist.sample(rng)]
         };
         let est_future_rent = self.trend_ests[&neighb_id];
-        let sample = city.units_by_neighborhood[&neighb_id].choose_multiple(rng, conf.sample_size);
+        let sample = city.units_by_neighborhood[neighb_id].choose_multiple(rng, conf.sample_size);
         for &u_id in sample {
             let unit = &mut city.units[u_id];
-            let parcel = &city.parcels[&unit.pos];
+            let parcel = &city.parcels.get(&unit.pos).unwrap();
             let est_value =
                 est_future_rent * unit.area * 12. * price_to_rent_ratio * parcel.desirability; // TODO was *100
             if est_value > 0. && est_value > unit.value {
@@ -307,7 +307,7 @@ impl Landlord {
         for &u in &self.units {
             let unit = &city.units[u];
             if !unit.vacant() {
-                let parcel = &city.parcels[&unit.pos];
+                let parcel = &city.parcels.get(&unit.pos).unwrap();
                 match parcel.neighborhood {
                     Some(neighb_id) => {
                         let n = neighborhoods.entry(neighb_id).or_insert(Vec::new());
@@ -320,7 +320,7 @@ impl Landlord {
 
         for (&neighb_id, rent_history) in &mut self.rent_obvs {
             let n = neighborhoods.entry(neighb_id).or_insert(Vec::new());
-            let sample = city.units_by_neighborhood[&neighb_id]
+            let sample = city.units_by_neighborhood[neighb_id]
                 .choose_multiple(rng, sample_size)
                 .map(|&u_id| city.units[u_id].rent_per_area());
             n.extend(sample);
@@ -360,7 +360,7 @@ impl Landlord {
                 // - since rents decrease as the apartment is vacant,
                 //   the longer the vacancy, the more likely they are to sell
                 // - maintenance costs become too much
-                let parcel = &city.parcels[&unit.pos];
+                let parcel = &city.parcels.get(&unit.pos).unwrap();
                 let est_future_rent = self.trend_ests[&parcel.neighborhood.unwrap()];
                 let est_value =
                     est_future_rent * unit.area * 12. * price_to_rent_ratio * parcel.desirability;

@@ -1,7 +1,7 @@
 use rand::Rng;
 use std::cmp::{max};
 use std::str::FromStr;
-use super::design::Design;
+use super::design::{Design, Neighborhood};
 use super::grid::{HexGrid, Position};
 use super::agent::{AgentType};
 use strum_macros::{EnumString, Display};
@@ -9,7 +9,64 @@ use fnv::{FnvHashMap, FnvHashSet};
 use noise::{OpenSimplex, Seedable};
 use rand::rngs::StdRng;
 
-#[derive(Display, PartialEq, Debug, EnumString)]
+pub struct PositionVector<T: Clone> {
+    dims: (isize, isize),
+    data: Vec<Option<T>>
+}
+
+impl<T: Clone> PositionVector<T> {
+    pub fn new(dims: (usize, usize)) -> PositionVector<T> {
+        PositionVector {
+            dims: (dims.0 as isize, dims.1 as isize),
+            data: vec![None; dims.0 * dims.1]
+        }
+    }
+
+    pub fn insert(&mut self, pos: &Position, val: T) {
+        let i = self.pos_to_index(pos);
+        self.data[i] = Some(val);
+    }
+
+    pub fn values<'a>(&'a self) -> impl Iterator<Item=&T> + 'a {
+        self.data.iter().filter_map(|v| v.as_ref())
+    }
+
+    pub fn values_mut<'a>(&'a mut self) -> impl Iterator<Item=&mut T> + 'a {
+        self.data.iter_mut().filter_map(|v| v.as_mut())
+    }
+
+    pub fn iter<'a>(&'a self) -> impl Iterator<Item=(Position, &T)> + 'a {
+        self.data.iter().enumerate().filter_map(move |(i, v)| {
+            match v {
+                Some(val) => {
+                    Some((self.index_to_pos(i), val))
+                },
+                None => None
+            }
+        })
+    }
+
+    pub fn get(&self, pos: &Position) -> Option<&T> {
+        let i = self.pos_to_index(pos);
+        self.data[i].as_ref()
+    }
+
+    pub fn get_mut(&mut self, pos: &Position) -> Option<&mut T> {
+        let i = self.pos_to_index(pos);
+        self.data[i].as_mut()
+    }
+
+    fn pos_to_index(&self, pos: &Position) -> usize {
+        (self.dims.1 * pos.0 + pos.1) as usize
+    }
+
+    fn index_to_pos(&self, idx: usize) -> Position {
+        let i = idx as isize;
+        (i/self.dims.1, i%self.dims.1)
+    }
+}
+
+#[derive(Display, PartialEq, Debug, EnumString, Clone)]
 pub enum ParcelType {
     Residential,
     Industrial,
@@ -17,7 +74,7 @@ pub enum ParcelType {
     River
 }
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Parcel {
     pub typ: ParcelType,
     pub desirability: f32,
@@ -27,24 +84,33 @@ pub struct Parcel {
 
 pub struct City {
     pub grid: HexGrid,
-    pub buildings: FnvHashMap<Position, Building>,
-    pub parcels: FnvHashMap<Position, Parcel>,
+    pub buildings: PositionVector<Building>,
+    pub parcels: PositionVector<Parcel>,
     pub units: Vec<Unit>,
-    pub units_by_neighborhood: FnvHashMap<usize, Vec<usize>>,
-    pub residential_parcels_by_neighborhood: FnvHashMap<usize, Vec<Position>>,
-    pub commercial: FnvHashMap<Position, usize>,
-    pub neighborhood_trends: FnvHashMap<usize, OpenSimplex>
+    pub units_by_neighborhood: Vec<Vec<usize>>,
+    pub residential_parcels_by_neighborhood: Vec<Vec<Position>>,
+    pub commercial: PositionVector<usize>,
+    pub neighborhood_trends: Vec<OpenSimplex>
 }
 
 
 impl City {
-    pub fn new(design: &mut Design, rng: &mut StdRng) -> City {
+    pub fn new(design: &Design, rng: &mut StdRng) -> City {
         let rows = design.map.layout.len();
         let cols = design.map.layout[0].len();
         let grid = HexGrid::new(rows, cols);
 
+        // Re-id neighborhoods so they are incremental values
+        let mut neighborhoods: Vec<Neighborhood> = Vec::new();
+        let mut neighb_ids: FnvHashMap<usize, usize> = FnvHashMap::default();
+        for (i, (&id, neighb)) in design.neighborhoods.iter().enumerate() {
+            neighb_ids.insert(id, i);
+            neighborhoods.push(neighb.clone());
+        }
+
+
         // Initialize parcels
-        let mut parcels = FnvHashMap::default();
+        let mut parcels = PositionVector::new((rows, cols));
         for (r, row) in design.map.layout.iter().enumerate() {
             for (c, cell) in row.iter().enumerate() {
                 match cell {
@@ -58,10 +124,20 @@ impl City {
                             desirability: 0.,
                             neighborhood: match neighb_id {
                                 -1 => None,
-                                id => Some(id as usize)
+                                id => {
+                                    // Sometimes parcels have neighborhood ids
+                                    // which have no specification in the design,
+                                    // so just check and add a new id if necessary
+                                    let k = id as usize;
+                                    if !neighb_ids.contains_key(&k) {
+                                        neighb_ids.insert(k, neighb_ids.keys().len());
+                                    }
+                                    Some(neighb_ids[&k])
+                                }
                             }
                         };
-                        parcels.insert((r as isize, c as isize), parcel);
+                        let pos = (r as isize, c as isize);
+                        parcels.insert(&pos, parcel);
                     }
                     None => continue
                 }
@@ -69,26 +145,27 @@ impl City {
         }
 
         let mut units = Vec::new();
-        let mut buildings = FnvHashMap::default();
-        let mut commercial = FnvHashMap::default();
-        let mut units_by_neighborhood = FnvHashMap::default();
-        let mut residential_parcels_by_neighborhood = FnvHashMap::default();
+        let mut buildings = PositionVector::new((rows, cols));
+        let mut commercial = PositionVector::new((rows, cols));
+        let mut units_by_neighborhood = Vec::new();
+        let mut residential_parcels_by_neighborhood = Vec::new();
 
         // Group units by neighborhood for lookup
         // and create neighborhood desirability trends
-        let mut neighborhood_trends = FnvHashMap::default();
-        for &id in design.neighborhoods.keys() {
+        let mut neighborhood_trends = Vec::new();
+        for _ in neighb_ids.values() {
             let mut noise = OpenSimplex::new();
             noise = noise.set_seed(rng.gen());
-            neighborhood_trends.insert(id, noise);
-            units_by_neighborhood.insert(id, Vec::new());
+            neighborhood_trends.push(noise);
+            units_by_neighborhood.push(Vec::new());
+            residential_parcels_by_neighborhood.push(Vec::new());
         }
 
         // Adjust neighborhood desirabilities
         // to be in a fixed range (0.5-1.5)
         let mut nei_des_min = 1./0.;
         let mut nei_des_max = 0.;
-        for n in design.neighborhoods.values() {
+        for n in &neighborhoods {
             if n.desirability > nei_des_max {
                 nei_des_max = n.desirability;
             }
@@ -97,7 +174,7 @@ impl City {
             }
         }
         let nei_des_range = nei_des_max - nei_des_min;
-        for n in design.neighborhoods.values_mut() {
+        for n in &mut neighborhoods {
             n.desirability = 1. + (n.desirability - nei_des_min)/(nei_des_range) - 0.5;
         }
 
@@ -105,11 +182,11 @@ impl City {
         for p in parcels.values().filter(|p| p.typ == ParcelType::Residential) {
             match p.neighborhood {
                 Some(neighb_id) => {
-                    let neighb = design.neighborhoods.get(&neighb_id).unwrap();
+                    let neighb = &neighborhoods[neighb_id];
                     let mut n_units = rng.gen_range(neighb.min_units, neighb.max_units);
                     let mut n_commercial = 0;
 
-                    residential_parcels_by_neighborhood.entry(neighb_id).or_insert(Vec::new()).push(p.pos);
+                    residential_parcels_by_neighborhood[neighb_id].push(p.pos);
 
                     // Houses have no commercial floors
                     // Need to keep these divisible by 4 for towers
@@ -145,18 +222,18 @@ impl City {
                             recently_sold: false,
                             owner: (AgentType::Landlord, 0) // Dummy placeholder
                         };
-                        units_by_neighborhood.get_mut(&neighb_id).unwrap().push(id);
+                        units_by_neighborhood[neighb_id].push(id);
                         units.push(unit);
                         building_units.push(id);
                     }
 
-                    buildings.insert(p.pos, Building {
+                    buildings.insert(&p.pos, Building {
                         units: building_units,
                         n_commercial: n_commercial as usize
                     });
 
                     if n_commercial > 0 {
-                        commercial.insert(p.pos, n_commercial as usize);
+                        commercial.insert(&p.pos, n_commercial as usize);
                     }
                 },
                 None => continue
@@ -177,14 +254,14 @@ impl City {
             // Nearby commercial density
             let n_commercial = grid.radius(p.pos, 2).iter()
                 .map(|pos| {
-                    match buildings.get(pos) {
+                    match buildings.get(&pos) {
                         Some(b) => b.n_commercial,
                         _ => 0
                     }
                 }).fold(0, |acc, item| acc + item);
 
             let neighb = match p.neighborhood {
-                Some(n) => design.neighborhoods.get(&n).unwrap().desirability,
+                Some(n) => neighborhoods[n].desirability,
                 _ => 0.
             };
             p.desirability = (1./park_dist * 10.) + neighb + (n_commercial as f32)/10.;
@@ -202,7 +279,7 @@ impl City {
         for (pos, b) in buildings.iter() {
             for &u_id in b.units.iter() {
                 let u = &mut units[u_id];
-                u.value = design.city.price_to_rent_ratio * u.rent * 12. * parcels[pos].desirability;
+                u.value = design.city.price_to_rent_ratio * u.rent * 12. * parcels.get(&pos).unwrap().desirability;
             }
         }
 
@@ -254,7 +331,7 @@ impl Unit {
 }
 
 
-#[derive(Debug)]
+#[derive(Debug, Clone)]
 pub struct Building {
     pub units: Vec<usize>,
     pub n_commercial: usize
