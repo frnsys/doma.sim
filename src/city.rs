@@ -68,6 +68,9 @@ impl City {
                             neighborhood: match neighb_id {
                                 -1 => None,
                                 id => {
+                                    // Sometimes parcels have neighborhood ids
+                                    // which have no specification in the design,
+                                    // so just check and add a new id if necessary
                                     let k = id as usize;
                                     if !neighb_ids.contains_key(&k) {
                                         neighb_ids.insert(k, neighb_ids.keys().len());
