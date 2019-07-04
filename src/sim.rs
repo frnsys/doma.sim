@@ -35,8 +35,7 @@ impl Simulation {
         }
         let work_dist = WeightedIndex::new(commercial_weights).unwrap();
         let vacancies: Vec<usize> = city.units.iter().map(|u| u.id).collect();
-        // let mut tenants: Vec<Tenant> = (0..design.city.population)
-        let mut tenants: Vec<Tenant> = (0..100000)
+        let mut tenants: Vec<Tenant> = (0..design.city.population)
             .map(|i| {
                 let tenant_id = i as usize;
                 let income_range = &design.city.incomes[income_dist.sample(&mut rng)];

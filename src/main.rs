@@ -83,7 +83,7 @@ fn main() {
         println!("{:?} tenants", sim.tenants.len());
 
         let mut speedup = false;
-        let mut history = Vec::new();
+        let mut history = Vec::with_capacity(steps);
         let mut pb = ProgressBar::new(steps as u64);
 
         if !debug {
