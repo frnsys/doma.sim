@@ -6,13 +6,19 @@ use noise::NoiseFn;
 use rand::distributions::WeightedIndex;
 use rand::prelude::*;
 use rand::rngs::StdRng;
+use rand::seq::SliceRandom;
 
 pub struct Simulation {
     pub city: City,
     pub doma: DOMA,
     pub tenants: Vec<Tenant>,
     pub landlords: Vec<Landlord>,
-    pub design: Design
+    pub design: Design,
+    transfers: Vec<(AgentType, usize, usize, f32)>,
+
+    // For random iteration over populations
+    landlord_order: Vec<usize>,
+    tenant_order: Vec<usize>,
 }
 
 impl Simulation {
@@ -121,29 +127,34 @@ impl Simulation {
             config.doma_p_expenses,
         );
 
+        let landlord_order = (0..landlords.len()).collect();
+        let tenant_order = (0..tenants.len()).collect();
+
         Simulation {
             city: city,
             landlords: landlords,
             tenants: tenants,
             doma: doma,
             design: design,
+            landlord_order: landlord_order,
+            tenant_order: tenant_order,
+            transfers: Vec::new()
         }
     }
 
     pub fn step(&mut self, time: usize, mut rng: &mut StdRng, conf: &SimConfig) {
-        let mut transfers = Vec::new();
         for tenant in &mut self.tenants {
-            transfers.extend(
+            self.transfers.extend(
                 tenant.check_purchase_offers(&mut self.city, self.design.city.price_to_rent_ratio),
             );
         }
         for landlord in &mut self.landlords {
-            transfers.extend(
+            self.transfers.extend(
                 landlord
                     .check_purchase_offers(&mut self.city, self.design.city.price_to_rent_ratio),
             );
         }
-        for (landlord_typ, landlord_id, unit_id, amount) in transfers {
+        for (landlord_typ, landlord_id, unit_id, amount) in self.transfers.drain(..) {
             match landlord_typ {
                 AgentType::Landlord => {
                     let landlord = &mut self.landlords[landlord_id];
@@ -157,8 +168,9 @@ impl Simulation {
             }
         }
 
-        for landlord in &mut self.landlords {
-            landlord.step(
+        self.landlord_order.shuffle(&mut rng);
+        for &landlord_id in &self.landlord_order {
+            self.landlords[landlord_id].step(
                 &mut self.city,
                 time,
                 self.design.city.price_to_rent_ratio,
@@ -174,7 +186,10 @@ impl Simulation {
             .filter(|u| u.vacancies() > 0)
             .map(|u| u.id)
             .collect();
-        for tenant in &mut self.tenants {
+
+        self.tenant_order.shuffle(&mut rng);
+        for &tenant_id in &self.tenant_order {
+            let tenant = &mut self.tenants[tenant_id];
             if !tenant.player {
                 tenant.step(
                     &mut self.city,
