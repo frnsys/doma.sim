@@ -63,12 +63,17 @@ fn save_run_data(sim: &Simulation, history: &Vec<Value>, conf: &Config) {
 }
 
 fn main() {
-    let conf = config::load_config();
+    let mut conf = config::load_config();
     let debug = conf.debug;
     let steps = if debug {
         conf.steps
     } else {
-        conf.play.n_steps
+        conf.play.turn_sequence.iter().fold(0, |acc, steps| acc + steps)
+    };
+    let mut switch_step = if debug {
+        conf.steps
+    } else {
+        conf.play.turn_sequence.remove(0)
     };
     let mut rng: StdRng = SeedableRng::seed_from_u64(conf.seed);
 
@@ -104,11 +109,17 @@ fn main() {
 
                 // Fast forwarding into the future
                 if !debug {
-                    if step > conf.play.turn_limit && !speedup {
+                    if step >= switch_step {
+                        switch_step = step + conf.play.turn_sequence.remove(0);
+                        speedup = !speedup;
+                    }
+                    if speedup {
                         println!("Fast forwarding...");
                         play.set_fast_forward().unwrap();
-                        play.release_player_tenants(&mut sim.tenants);
-                        speedup = true;
+                        // play.release_player_tenants(&mut sim.tenants);
+                    } else {
+                        println!("Normal speed...");
+                        play.set_ready().unwrap();
                     }
 
                     sync::sync(step, &sim.city, &sim.design, stats::stats(&sim)).unwrap();

@@ -9,12 +9,6 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
-/*
- * TODO
- * - Get commands
- * - Speed up/fast-forward
- */
-
 #[derive(Display, Debug)]
 pub enum SimState {
     Loading,
@@ -157,6 +151,7 @@ impl PlayManager {
         self.con.del("game_step")?;
         self.con.del("cmds")?;
         self.con.del("active_players")?;
+        self.con.del("active_tenants")?;
         self.players.clear();
         self.reset_ready_players()
     }
@@ -181,16 +176,6 @@ impl PlayManager {
                     self.players.insert(p_id, t_id);
                     let tenant = &mut tenants[t_id];
                     tenant.player = true;
-
-                    // Evict the tenant
-                    match tenant.unit {
-                        Some(u_id) => {
-                            let unit = &mut units[u_id];
-                            unit.tenants.remove(&t_id);
-                            tenant.unit = None;
-                        },
-                        None => {}
-                    }
                 },
                 Command::ReleaseTenant(p_id) => {
                     match self.players.remove(&p_id) {
