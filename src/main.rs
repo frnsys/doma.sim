@@ -98,7 +98,7 @@ fn main() {
             // Setup tenants for players to choose
             play.gen_player_tenant_pool(&sim.tenants);
             play.set_ready().unwrap();
-            println!("Ready: Session {:?}", Local::now().to_rfc3339());
+            println!("Ready: Session {}", Local::now().to_rfc3339());
         }
 
         for step in 0..steps {
