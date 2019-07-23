@@ -99,10 +99,10 @@ fn main() {
         }
 
         for step in 0..steps {
-            if debug || speedup || play.all_players_ready() {
+            if debug || speedup || play.all_players_ready(&mut sim) {
                 if !debug {
                     play.sync_step(step, steps).unwrap();
-                    play.process_commands(&mut sim.tenants, &mut sim.city, &mut sim.doma).unwrap();
+                    play.process_commands(&mut sim).unwrap();
                 }
 
                 sim.step(step, &mut rng, &conf.sim);

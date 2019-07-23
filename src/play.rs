@@ -2,8 +2,9 @@ use std::thread;
 use serde::Deserialize;
 use redis::{Commands, Connection};
 use strum_macros::{Display};
-use super::agent::{Tenant, DOMA};
-use super::city::{City};
+use super::agent::Tenant;
+use super::sim::Simulation;
+use super::city::City;
 use rand::seq::SliceRandom;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -150,9 +151,11 @@ impl PlayManager {
         self.reset_ready_players()
     }
 
-    pub fn all_players_ready(&self) -> bool {
+    pub fn all_players_ready(&mut self, mut sim: &mut Simulation) -> bool {
         let mut all_players_ready = false;
         while !all_players_ready {
+            self.process_commands(&mut sim).unwrap();
+            self.sync_players(&sim.tenants, &sim.city).unwrap();
             let ready_players: Vec<String> = self.con.lrange("ready_players", 0, -1).unwrap();
             let active_players: Vec<String> = self.con.lrange("active_players", 0, -1).unwrap();
             all_players_ready = active_players.iter().all(|id| {
@@ -162,20 +165,21 @@ impl PlayManager {
         all_players_ready
     }
 
-    pub fn process_commands(&mut self, tenants: &mut Vec<Tenant>, city: &mut City, doma: &mut DOMA) -> redis::RedisResult<()> {
+    pub fn process_commands(&mut self, sim: &mut Simulation) -> redis::RedisResult<()> {
         let cmds: Vec<String> = self.con.lrange("cmds", 0, -1)?;
         for cmd in cmds {
             match serde_json::from_str(&cmd).unwrap() {
                 Command::SelectTenant(p_id, t_id) => {
+                    println!("Player joined: {:?}", p_id);
                     self.players.insert(p_id, t_id);
-                    let tenant = &mut tenants[t_id];
+                    let tenant = &mut sim.tenants[t_id];
                     tenant.player = true;
-                    self.sync_players(&tenants, &city).unwrap();
                 },
                 Command::ReleaseTenant(p_id) => {
+                    println!("Player left: {:?}", p_id);
                     match self.players.remove(&p_id) {
                         Some(t_id) => {
-                            tenants[t_id].player = false;
+                            sim.tenants[t_id].player = false;
                         },
                         None => {}
                     }
@@ -183,9 +187,9 @@ impl PlayManager {
                 Command::MoveTenant(p_id, u_id) => {
                     match self.players.get(&p_id) {
                         Some(&t_id) => {
-                            let unit = &mut city.units[u_id];
+                            let unit = &mut sim.city.units[u_id];
                             unit.tenants.insert(t_id);
-                            let tenant = &mut tenants[t_id];
+                            let tenant = &mut sim.tenants[t_id];
                             tenant.unit = Some(u_id);
                         },
                         None => {}
@@ -194,7 +198,7 @@ impl PlayManager {
                 Command::DOMAAdd(p_id, amount) => {
                     match self.players.get(&p_id) {
                         Some(&t_id) => {
-                            doma.add_funds(t_id, amount);
+                            sim.doma.add_funds(t_id, amount);
                         },
                         None => {}
                     }
