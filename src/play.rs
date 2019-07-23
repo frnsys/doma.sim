@@ -14,6 +14,7 @@ use std::time::{Duration, SystemTime, UNIX_EPOCH};
 pub enum SimState {
     Loading,
     Ready,
+    InProgress,
     FastForward,
     Finished
 }
@@ -124,6 +125,10 @@ impl PlayManager {
 
     pub fn set_ready(&self) -> redis::RedisResult<()> {
         self.set_state(SimState::Ready)
+    }
+
+    pub fn set_in_progress(&self) -> redis::RedisResult<()> {
+        self.set_state(SimState::InProgress)
     }
 
     pub fn set_loading(&self) -> redis::RedisResult<()> {

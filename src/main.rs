@@ -20,7 +20,6 @@ mod sync;
 use self::config::Config;
 use self::sim::Simulation;
 use self::play::PlayManager;
-use chrono::prelude::*;
 use pbr::ProgressBar;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -28,6 +27,7 @@ use serde_json::{json, Value};
 use std::fs;
 use std::os::unix::fs::symlink;
 use std::path::Path;
+use chrono::{DateTime, Utc, Local};
 
 fn save_run_data(sim: &Simulation, history: &Vec<Value>, conf: &Config) {
     let now: DateTime<Utc> = Utc::now();
@@ -63,17 +63,12 @@ fn save_run_data(sim: &Simulation, history: &Vec<Value>, conf: &Config) {
 }
 
 fn main() {
-    let mut conf = config::load_config();
+    let conf = config::load_config();
     let debug = conf.debug;
     let steps = if debug {
         conf.steps
     } else {
         conf.play.turn_sequence.iter().fold(0, |acc, steps| acc + steps) + conf.play.burn_in
-    };
-    let mut switch_step = if debug {
-        conf.steps
-    } else {
-        conf.play.burn_in + conf.play.turn_sequence.remove(0)
     };
     let mut rng: StdRng = SeedableRng::seed_from_u64(conf.seed);
 
@@ -82,6 +77,13 @@ fn main() {
     play.set_loading().unwrap();
 
     loop {
+        let mut turn_sequence = conf.play.turn_sequence.clone();
+        let mut switch_step = if debug {
+            conf.steps
+        } else {
+            conf.play.burn_in + turn_sequence.remove(0)
+        };
+
         // Load and setup world
         let design = design::load_design(&conf.sim.design_id);
         let mut sim = Simulation::new(design, &conf.sim, &mut rng);
@@ -96,7 +98,7 @@ fn main() {
             // Setup tenants for players to choose
             play.gen_player_tenant_pool(&sim.tenants);
             play.set_ready().unwrap();
-            println!("Ready");
+            println!("Ready: Session {:?}", Local::now().to_rfc3339());
         }
 
         for step in 0..steps {
@@ -112,7 +114,7 @@ fn main() {
                 // Fast forwarding into the future
                 if !debug {
                     if step >= switch_step {
-                        switch_step = step + conf.play.turn_sequence.remove(0);
+                        switch_step = step + turn_sequence.remove(0);
                         fastfw = !fastfw;
                     }
                     if fastfw {
@@ -124,7 +126,7 @@ fn main() {
                     } else {
                         started = true;
                         println!("Normal speed...");
-                        play.set_ready().unwrap();
+                        play.set_in_progress().unwrap();
                     }
 
                     sync::sync(step, &sim.city, &sim.design, stats::stats(&sim)).unwrap();
