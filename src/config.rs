@@ -40,6 +40,7 @@ pub struct SimConfig {
 #[derive(Deserialize, Debug)]
 #[serde(rename_all = "UPPERCASE")]
 pub struct PlayConfig {
+    pub burn_in: usize,
     pub turn_sequence: Vec<usize>,
     pub min_step_delay: u64,
     pub pause_between_runs: u64,

@@ -68,12 +68,12 @@ fn main() {
     let steps = if debug {
         conf.steps
     } else {
-        conf.play.turn_sequence.iter().fold(0, |acc, steps| acc + steps)
+        conf.play.turn_sequence.iter().fold(0, |acc, steps| acc + steps) + conf.play.burn_in
     };
     let mut switch_step = if debug {
         conf.steps
     } else {
-        conf.play.turn_sequence.remove(0)
+        conf.play.burn_in + conf.play.turn_sequence.remove(0)
     };
     let mut rng: StdRng = SeedableRng::seed_from_u64(conf.seed);
 
@@ -87,7 +87,8 @@ fn main() {
         let mut sim = Simulation::new(design, &conf.sim, &mut rng);
         println!("{:?} tenants", sim.tenants.len());
 
-        let mut speedup = false;
+        let mut fastfw = false;
+        let mut started = false;
         let mut history = Vec::with_capacity(steps);
         let mut pb = ProgressBar::new(steps as u64);
 
@@ -99,7 +100,8 @@ fn main() {
         }
 
         for step in 0..steps {
-            if debug || speedup || play.all_players_ready(&mut sim) {
+            let burn_in = step < conf.play.burn_in;
+            if debug || fastfw || burn_in || play.all_players_ready(&mut sim, started) {
                 if !debug {
                     play.sync_step(step, steps).unwrap();
                     play.process_commands(&mut sim).unwrap();
@@ -111,13 +113,16 @@ fn main() {
                 if !debug {
                     if step >= switch_step {
                         switch_step = step + conf.play.turn_sequence.remove(0);
-                        speedup = !speedup;
+                        fastfw = !fastfw;
                     }
-                    if speedup {
+                    if fastfw {
                         println!("Fast forwarding...");
                         play.set_fast_forward().unwrap();
                         // play.release_player_tenants(&mut sim.tenants);
+                    } else if burn_in {
+                        println!("Burn in...");
                     } else {
+                        started = true;
                         println!("Normal speed...");
                         play.set_ready().unwrap();
                     }
@@ -126,9 +131,9 @@ fn main() {
                     play.sync_players(&sim.tenants, &sim.city).unwrap();
                     play.reset_ready_players().unwrap();
 
-                    if !speedup {
-                        play.wait_turn(conf.play.min_step_delay);
-                    }
+                    // if !fastfw && !burn_in {
+                    //     play.wait_turn(conf.play.min_step_delay);
+                    // }
                 } else {
                     history.push(stats::stats(&sim));
                 }

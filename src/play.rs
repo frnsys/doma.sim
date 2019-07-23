@@ -110,12 +110,12 @@ impl PlayManager {
         self.con.set("game_progress", step as f32/steps as f32)
     }
 
-    pub fn wait_turn(&self, seconds: u64) {
-        let start = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-        let end = start + seconds;
-        let _: () = self.con.set("turn_timer", format!("{}-{}", start, end)).unwrap();
-        self.wait(seconds)
-    }
+    // pub fn wait_turn(&self, seconds: u64) {
+    //     let start = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
+    //     let end = start + seconds;
+    //     let _: () = self.con.set("turn_timer", format!("{}-{}", start, end)).unwrap();
+    //     self.wait(seconds)
+    // }
 
     fn set_state(&self, state: SimState) -> redis::RedisResult<()> {
         self.con.set("game_state", state.to_string().to_lowercase())?;
@@ -151,7 +151,12 @@ impl PlayManager {
         self.reset_ready_players()
     }
 
-    pub fn all_players_ready(&mut self, mut sim: &mut Simulation) -> bool {
+    pub fn all_players_ready(&mut self, mut sim: &mut Simulation, started: bool) -> bool {
+        if started {
+            println!("Waiting for players...");
+        } else {
+            println!("Waiting for players to join...");
+        }
         let mut all_players_ready = false;
         while !all_players_ready {
             self.process_commands(&mut sim).unwrap();
@@ -161,6 +166,11 @@ impl PlayManager {
             all_players_ready = active_players.iter().all(|id| {
                 ready_players.contains(id)
             });
+
+            // If game hasn't started yet, wait for players to join
+            if !started {
+                all_players_ready = all_players_ready && active_players.len() > 0;
+            }
         }
         all_players_ready
     }
