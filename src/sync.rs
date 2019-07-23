@@ -65,12 +65,11 @@ pub fn jsonify(month: usize, city: &City, design: &Design, stats: Value) -> Valu
         "buildings": buildings,
         "neighborhoods": design.neighborhoods,
         "units": units,
-        "stats": stats
+        "stats": stats,
     })
 }
 
 pub fn sync(month: usize, city: &City, design: &Design, stats: Value) -> redis::RedisResult<()> {
-    // TODO stats
     let client = redis::Client::open("redis://127.0.0.1/1")?;
     let con = client.get_connection()?;
 

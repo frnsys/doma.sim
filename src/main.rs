@@ -102,7 +102,7 @@ fn main() {
             if debug || speedup || play.all_players_ready() {
                 if !debug {
                     play.sync_step(step, steps).unwrap();
-                    play.process_commands(&mut sim.tenants, &mut sim.city.units, &mut sim.doma).unwrap();
+                    play.process_commands(&mut sim.tenants, &mut sim.city, &mut sim.doma).unwrap();
                 }
 
                 sim.step(step, &mut rng, &conf.sim);

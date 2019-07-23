@@ -3,7 +3,7 @@ use serde::Deserialize;
 use redis::{Commands, Connection};
 use strum_macros::{Display};
 use super::agent::{Tenant, DOMA};
-use super::city::{City, Unit};
+use super::city::{City};
 use rand::seq::SliceRandom;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -53,12 +53,6 @@ impl PlayManager {
                 "work": t.work,
                 "unit": t.unit
             }).to_string()).unwrap();
-        }
-    }
-
-    pub fn release_player_tenants(&self, tenants: &mut Vec<Tenant>) {
-        for &tenant_id in self.players.values() {
-            tenants[tenant_id].player = false;
         }
     }
 
@@ -168,7 +162,7 @@ impl PlayManager {
         all_players_ready
     }
 
-    pub fn process_commands(&mut self, tenants: &mut Vec<Tenant>, units: &mut Vec<Unit>, doma: &mut DOMA) -> redis::RedisResult<()> {
+    pub fn process_commands(&mut self, tenants: &mut Vec<Tenant>, city: &mut City, doma: &mut DOMA) -> redis::RedisResult<()> {
         let cmds: Vec<String> = self.con.lrange("cmds", 0, -1)?;
         for cmd in cmds {
             match serde_json::from_str(&cmd).unwrap() {
@@ -176,6 +170,7 @@ impl PlayManager {
                     self.players.insert(p_id, t_id);
                     let tenant = &mut tenants[t_id];
                     tenant.player = true;
+                    self.sync_players(&tenants, &city).unwrap();
                 },
                 Command::ReleaseTenant(p_id) => {
                     match self.players.remove(&p_id) {
@@ -188,7 +183,7 @@ impl PlayManager {
                 Command::MoveTenant(p_id, u_id) => {
                     match self.players.get(&p_id) {
                         Some(&t_id) => {
-                            let unit = &mut units[u_id];
+                            let unit = &mut city.units[u_id];
                             unit.tenants.insert(t_id);
                             let tenant = &mut tenants[t_id];
                             tenant.unit = Some(u_id);
