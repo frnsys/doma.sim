@@ -12,6 +12,7 @@ pub struct Design {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Neighborhood {
+    pub name: String,
     pub desirability: f32,
     pub min_units: u32,
     pub max_units: u32,
