@@ -113,7 +113,7 @@ fn main() {
 
                 // Fast forwarding into the future
                 if !debug {
-                    if step >= switch_step {
+                    if step + 1 >= switch_step {
                         switch_step = step + turn_sequence.remove(0);
                         fastfw = !fastfw;
                     }
