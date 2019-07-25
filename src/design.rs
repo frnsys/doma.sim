@@ -12,6 +12,7 @@ pub struct Design {
 #[derive(Serialize, Deserialize, Clone, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct Neighborhood {
+    pub id: isize,
     pub name: String,
     pub desirability: f32,
     pub min_units: u32,
@@ -43,7 +44,15 @@ pub struct CityConfig {
 #[derive(Deserialize, Debug)]
 pub struct Map {
     pub layout: Vec<Vec<Option<String>>>,
+    pub offset: MapOffset,
 }
+
+#[derive(Serialize, Deserialize, Debug)]
+pub struct MapOffset {
+    pub row: bool,
+    pub col: bool,
+}
+
 
 pub fn load_design(design_id: &String) -> Design {
     let client = redis::Client::open("redis://127.0.0.1/1").unwrap();

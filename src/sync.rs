@@ -16,7 +16,7 @@ pub fn jsonify(month: usize, city: &City, design: &Design, stats: Value) -> Valu
             pos.1,
             json!({
                 "neighb": match parcel.neighborhood {
-                    Some(neighb_id) => neighb_id as i32,
+                    Some(neighb_id) => city.neighborhoods[neighb_id].id as i32,
                     None => -1
                 },
                 "type": parcel.typ.to_string(),
@@ -60,7 +60,8 @@ pub fn jsonify(month: usize, city: &City, design: &Design, stats: Value) -> Valu
         "map": {
             "rows": city.grid.rows,
             "cols": city.grid.cols,
-            "parcels": parcels
+            "parcels": parcels,
+            "offset": design.map.offset
         },
         "buildings": buildings,
         "neighborhoods": design.neighborhoods,

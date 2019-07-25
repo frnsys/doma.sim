@@ -90,6 +90,7 @@ pub struct City {
     pub units_by_neighborhood: Vec<Vec<usize>>,
     pub residential_parcels_by_neighborhood: Vec<Vec<Position>>,
     pub commercial: PositionVector<usize>,
+    pub neighborhoods: Vec<Neighborhood>,
     pub neighborhood_trends: Vec<OpenSimplex>
 }
 
@@ -127,12 +128,13 @@ impl City {
                                 id => {
                                     // Sometimes parcels have neighborhood ids
                                     // which have no specification in the design,
-                                    // so just check and add a new id if necessary
+                                    // return None in that case
                                     let k = id as usize;
                                     if !neighb_ids.contains_key(&k) {
-                                        neighb_ids.insert(k, neighb_ids.keys().len());
+                                        None
+                                    } else {
+                                        Some(neighb_ids[&k])
                                     }
-                                    Some(neighb_ids[&k])
                                 }
                             }
                         };
@@ -289,9 +291,10 @@ impl City {
             parcels: parcels,
             buildings: buildings,
             commercial: commercial,
+            neighborhoods: neighborhoods,
             units_by_neighborhood: units_by_neighborhood,
             residential_parcels_by_neighborhood: residential_parcels_by_neighborhood,
-            neighborhood_trends: neighborhood_trends
+            neighborhood_trends: neighborhood_trends,
         }
     }
 }
