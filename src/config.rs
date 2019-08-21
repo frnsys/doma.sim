@@ -35,6 +35,7 @@ pub struct SimConfig {
     pub trend_months: usize,
     pub rent_increase_rate: f32,
     pub moving_penalty: f32,
+    pub friend_limit: usize,
 }
 
 #[derive(Deserialize, Debug)]

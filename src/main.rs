@@ -7,8 +7,10 @@ extern crate redis;
 extern crate serde;
 extern crate serde_json;
 extern crate serde_yaml;
+extern crate petgraph;
 
 mod agent;
+mod social;
 mod city;
 mod config;
 mod design;

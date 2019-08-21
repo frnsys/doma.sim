@@ -1,5 +1,6 @@
 use super::agent::{AgentType, Landlord, Tenant, DOMA};
 use super::city::{City, Unit};
+use super::social::{SocialGraph};
 use super::config::SimConfig;
 use super::design::Design;
 use noise::NoiseFn;
@@ -13,6 +14,7 @@ pub struct Simulation {
     pub doma: DOMA,
     pub tenants: Vec<Tenant>,
     pub landlords: Vec<Landlord>,
+    pub social_graph: SocialGraph,
     pub design: Design,
     transfers: Vec<(AgentType, usize, usize, f32)>,
 
@@ -86,6 +88,10 @@ impl Simulation {
             })
             .collect();
 
+        // Create social network
+        let social_graph = SocialGraph::new(design.city.population as usize,
+                                            config.friend_limit, &mut rng);
+
         // Distribute ownership of units
         for (_, b) in city.buildings.iter() {
             for &u_id in b.units.iter() {
@@ -136,6 +142,7 @@ impl Simulation {
             tenants: tenants,
             doma: doma,
             design: design,
+            social_graph: social_graph,
             landlord_order: landlord_order,
             tenant_order: tenant_order,
             transfers: Vec::new()
