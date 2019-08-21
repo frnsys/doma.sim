@@ -8,6 +8,7 @@ extern crate serde;
 extern crate serde_json;
 extern crate serde_yaml;
 extern crate petgraph;
+extern crate rand_distr;
 
 mod agent;
 mod social;

@@ -5,6 +5,7 @@ use super::config::SimConfig;
 use super::design::Design;
 use noise::NoiseFn;
 use rand::distributions::WeightedIndex;
+use rand_distr::{LogNormal, Distribution};
 use rand::prelude::*;
 use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
@@ -34,7 +35,7 @@ impl Simulation {
             .collect();
 
         // Create tenants
-        let income_dist = WeightedIndex::new(design.city.incomes.iter().map(|i| i.p)).unwrap();
+        let income_dist = LogNormal::new(design.city.income_mu, design.city.income_sigma).unwrap();
         let mut commercial = Vec::new();
         let mut commercial_weights = Vec::new();
         for (pos, n) in city.commercial.iter() {
@@ -46,8 +47,7 @@ impl Simulation {
         let mut tenants: Vec<Tenant> = (0..design.city.population)
             .map(|i| {
                 let tenant_id = i as usize;
-                let income_range = &design.city.incomes[income_dist.sample(&mut rng)];
-                let income = rng.gen_range(income_range.low, income_range.high) as f32;
+                let income = income_dist.sample(&mut rng);
                 let work_pos = commercial[work_dist.sample(&mut rng)];
 
                 let mut tenant = Tenant {

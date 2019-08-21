@@ -38,7 +38,8 @@ pub struct CityConfig {
     pub price_to_rent_ratio: f32,
     pub landlords: u32,
     pub population: u32,
-    pub incomes: Vec<IncomeRange>,
+    pub income_mu: f32,
+    pub income_sigma: f32,
 }
 
 #[derive(Deserialize, Debug)]
