@@ -1,55 +1,48 @@
-SIM:
-    # City design id
-    DESIGN_ID: "philadelphia"
+# City design id
+DESIGN_ID: "philadelphia"
 
-    # Initial DOMA funds for purchasing properties
-    DOMA_STARTING_FUNDS: 2000000
+# Initial DOMA funds for purchasing properties
+DOMA_STARTING_FUNDS: 2000000
 
-    # Starting percent of rent to dividend
-    DOMA_P_RENT_SHARE: 0.1
+# Starting percent of rent to dividend
+DOMA_P_RENT_SHARE: 0.1
 
-    # Starting percent of rent to DOMA funds
-    DOMA_P_RESERVES: 0.05
+# Starting percent of rent to DOMA funds
+DOMA_P_RESERVES: 0.05
 
-    # Starting percent of rent to DOMA overhead costs
-    DOMA_P_EXPENSES: 0.05
+# Starting percent of rent to DOMA overhead costs
+DOMA_P_EXPENSES: 0.05
 
-    # Scaling value for desirability random walks;
-    # higher values mean slower changes
-    DESIRABILITY_STRETCH_FACTOR: 72
+# Scaling value for desirability random walks;
+# higher values mean slower changes
+DESIRABILITY_STRETCH_FACTOR: 72
 
-    # Default annual appreciation for house values
-    BASE_APPRECIATION: 1.02
+# Default annual appreciation for house values
+BASE_APPRECIATION: 1.02
 
-    # Number of apartments to sample per neighborhood
-    # when estimating rents
-    SAMPLE_SIZE: 10
+# Number of apartments to sample per neighborhood
+# when estimating rents
+SAMPLE_SIZE: 10
 
-    # Number of apartments a tenant looks at
-    # when looking for a new apartment
-    TENANT_SAMPLE_SIZE: 30
+# Number of apartments a tenant looks at
+# when looking for a new apartment
+TENANT_SAMPLE_SIZE: 30
 
-    # How far out to extrapolate
-    # rent trends. Landlords look this far
-    # ahead to make decisions about which
-    # properties are worth buying
-    TREND_MONTHS: 12
+# How far out to extrapolate
+# rent trends. Landlords look this far
+# ahead to make decisions about which
+# properties are worth buying
+TREND_MONTHS: 12
 
-    # Default rent increase rate between leases and tenants
-    RENT_INCREASE_RATE: 1.05
+# Default rent increase rate between leases and tenants
+RENT_INCREASE_RATE: 1.05
 
-    # Overhead of moving;
-    # for a tenant to move,
-    # an apartment must be at least this much
-    # more desirable than their current one
-    MOVING_PENALTY: 10
+# Overhead of moving;
+# for a tenant to move,
+# an apartment must be at least this much
+# more desirable than their current one
+MOVING_PENALTY: 10
 
-    # Maximum number of friends a tenant
-    # can have
-    FRIEND_LIMIT: 120
-
-PLAY:
-    BURN_IN: 12
-    TURN_SEQUENCE: [1, 24, 3, 100]
-    MIN_STEP_DELAY: 10
-    PAUSE_BETWEEN_RUNS: 20
+# Maximum number of friends a tenant
+# can have
+FRIEND_LIMIT: 120

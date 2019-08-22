@@ -1,5 +1,5 @@
 use super::city::{City, Parcel, Unit};
-use super::config::SimConfig;
+use super::config::Config;
 use super::grid::Position;
 use fnv::FnvHashMap;
 use linreg::linear_regression;
@@ -39,7 +39,7 @@ impl Tenant {
         month: usize,
         vacant_units: &mut Vec<usize>,
         rng: &mut StdRng,
-        conf: &SimConfig,
+        conf: &Config,
     ) {
         let mut reconsider;
         let mut current_desirability = 0.;
@@ -239,7 +239,7 @@ impl Landlord {
         month: usize,
         price_to_rent_ratio: f32,
         rng: &mut StdRng,
-        conf: &SimConfig,
+        conf: &Config,
     ) {
         // Update market estimates
         self.estimate_rents(city, rng, conf.sample_size);

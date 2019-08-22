@@ -1,7 +1,7 @@
 use super::agent::{AgentType, Landlord, Tenant, DOMA};
 use super::city::{City, Unit};
 use super::social::{SocialGraph};
-use super::config::SimConfig;
+use super::config::Config;
 use super::design::Design;
 use noise::NoiseFn;
 use rand::distributions::WeightedIndex;
@@ -11,6 +11,7 @@ use rand::rngs::StdRng;
 use rand::seq::SliceRandom;
 
 pub struct Simulation {
+    pub time: usize,
     pub city: City,
     pub doma: DOMA,
     pub tenants: Vec<Tenant>,
@@ -25,7 +26,7 @@ pub struct Simulation {
 }
 
 impl Simulation {
-    pub fn new(design: Design, config: &SimConfig, mut rng: &mut StdRng) -> Simulation {
+    pub fn new(design: Design, config: &Config, mut rng: &mut StdRng) -> Simulation {
         // Generate city from provided design
         let mut city = City::new(&design, &mut rng);
 
@@ -137,6 +138,7 @@ impl Simulation {
         let tenant_order = (0..tenants.len()).collect();
 
         Simulation {
+            time: 0,
             city: city,
             landlords: landlords,
             tenants: tenants,
@@ -149,7 +151,7 @@ impl Simulation {
         }
     }
 
-    pub fn step(&mut self, time: usize, mut rng: &mut StdRng, conf: &SimConfig) {
+    pub fn step(&mut self, mut rng: &mut StdRng, conf: &Config) {
         for tenant in &mut self.tenants {
             self.transfers.extend(
                 tenant.check_purchase_offers(&mut self.city, self.design.city.price_to_rent_ratio),
@@ -179,7 +181,7 @@ impl Simulation {
         for &landlord_id in &self.landlord_order {
             self.landlords[landlord_id].step(
                 &mut self.city,
-                time,
+                self.time,
                 self.design.city.price_to_rent_ratio,
                 &mut rng,
                 &conf,
@@ -200,7 +202,7 @@ impl Simulation {
             if !tenant.player {
                 tenant.step(
                     &mut self.city,
-                    time,
+                    self.time,
                     &mut vacant_units,
                     &mut rng,
                     &conf,
@@ -208,7 +210,7 @@ impl Simulation {
             }
         }
 
-        if time % 12 == 0 {
+        if self.time % 12 == 0 {
             // Appraise
             for unit_ids in &self.city.units_by_neighborhood {
                 let units: Vec<&Unit> = unit_ids
@@ -240,21 +242,22 @@ impl Simulation {
 
         // Desirability changes, random walk
         for (neighb_id, parcel_ids) in self.city.residential_parcels_by_neighborhood.iter().enumerate() {
-            let last_val = if time > 0 {
+            let last_val = if self.time > 0 {
                 self.city.neighborhood_trends[neighb_id].get([
-                    (time - 1) as f64 / conf.desirability_stretch_factor,
+                    (self.time - 1) as f64 / conf.desirability_stretch_factor,
                     0.,
                 ])
             } else {
                 0.
             };
             let val = self.city.neighborhood_trends[neighb_id]
-                .get([time as f64 / conf.desirability_stretch_factor, 0.]);
+                .get([self.time as f64 / conf.desirability_stretch_factor, 0.]);
             let change = (val - last_val) as f32;
             for p in parcel_ids {
                 let parcel = self.city.parcels.get_mut(p).unwrap();
                 parcel.desirability = f32::max(0., parcel.desirability - change);
             }
         }
+        self.time += 1;
     }
 }
