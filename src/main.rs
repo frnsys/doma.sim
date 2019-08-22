@@ -73,13 +73,13 @@ fn main() {
 
     let mut play = PlayManager::new();
     loop {
-        play.reset().unwrap();
         play.set_loading().unwrap();
 
         // Load and setup world
         let design = design::load_design(&conf.design_id);
         let mut sim = Simulation::new(design, &conf, &mut rng);
         println!("{:?} tenants", sim.tenants.len());
+        play.reset().unwrap();
 
         if debug {
             let mut history = Vec::with_capacity(steps);
@@ -107,6 +107,7 @@ fn main() {
                 let control = play.wait_for_control(&mut sim);
                 match control {
                     Control::Run(steps) => {
+                        println!("Running for {:?} steps...", steps);
                         play.set_running().unwrap();
                         for step in 0..steps {
                             sim.step(&mut rng, &conf);
@@ -115,8 +116,12 @@ fn main() {
                         sync::sync(sim.time, &sim.city, &sim.design, stats::stats(&sim)).unwrap();
                         play.sync_players(&sim.tenants, &sim.city).unwrap();
                         play.set_ready().unwrap();
+                        println!("Finished running.");
                     },
-                    Control::Reset => continue
+                    Control::Reset => {
+                        println!("Resetting...");
+                        break;
+                    }
                 }
             }
         }

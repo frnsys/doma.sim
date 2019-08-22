@@ -143,54 +143,57 @@ impl PlayManager {
     }
 
     pub fn process_commands(&mut self, sim: &mut Simulation) -> Option<Control> {
-        let cmds: Vec<String> = self.con.lrange("cmds", 0, -1).unwrap();
         let mut control = None;
-        for cmd in cmds {
-            match serde_json::from_str(&cmd).unwrap() {
-                Command::SelectTenant(p_id, t_id) => {
-                    println!("Player joined: {:?}", p_id);
-                    self.players.insert(p_id, t_id);
-                    let tenant = &mut sim.tenants[t_id];
-                    tenant.player = true;
-                },
-                Command::ReleaseTenant(p_id) => {
-                    println!("Player left: {:?}", p_id);
-                    match self.players.remove(&p_id) {
-                        Some(t_id) => {
-                            sim.tenants[t_id].player = false;
-                        },
-                        None => {}
-                    }
-                },
-                Command::MoveTenant(p_id, u_id) => {
-                    match self.players.get(&p_id) {
-                        Some(&t_id) => {
-                            let unit = &mut sim.city.units[u_id];
-                            unit.tenants.insert(t_id);
+        loop {
+            let cmd_raw: Option<String> = self.con.lpop("cmds").unwrap();
+            match cmd_raw {
+                None => break,
+                Some(cmd) => {
+                    match serde_json::from_str(&cmd).unwrap() {
+                        Command::SelectTenant(p_id, t_id) => {
+                            println!("Player joined: {:?}", p_id);
+                            self.players.insert(p_id, t_id);
                             let tenant = &mut sim.tenants[t_id];
-                            tenant.unit = Some(u_id);
+                            tenant.player = true;
                         },
-                        None => {}
-                    }
-                },
-                Command::DOMAAdd(p_id, amount) => {
-                    match self.players.get(&p_id) {
-                        Some(&t_id) => {
-                            sim.doma.add_funds(t_id, amount);
+                        Command::ReleaseTenant(p_id) => {
+                            println!("Player left: {:?}", p_id);
+                            match self.players.remove(&p_id) {
+                                Some(t_id) => {
+                                    sim.tenants[t_id].player = false;
+                                },
+                                None => {}
+                            }
                         },
-                        None => {}
+                        Command::MoveTenant(p_id, u_id) => {
+                            match self.players.get(&p_id) {
+                                Some(&t_id) => {
+                                    let unit = &mut sim.city.units[u_id];
+                                    unit.tenants.insert(t_id);
+                                    let tenant = &mut sim.tenants[t_id];
+                                    tenant.unit = Some(u_id);
+                                },
+                                None => {}
+                            }
+                        },
+                        Command::DOMAAdd(p_id, amount) => {
+                            match self.players.get(&p_id) {
+                                Some(&t_id) => {
+                                    sim.doma.add_funds(t_id, amount);
+                                },
+                                None => {}
+                            }
+                        },
+                        Command::Run(n) => {
+                            control = Some(Control::Run(n));
+                        },
+                        Command::Reset => {
+                            control = Some(Control::Reset);
+                        }
                     }
-                },
-                Command::Run(n) => {
-                    control = Some(Control::Run(n));
-                },
-                Command::Reset => {
-                    control = Some(Control::Reset);
                 }
             }
         }
-
-        let _: () = self.con.del("cmds").unwrap();
         control
     }
 }
