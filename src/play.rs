@@ -1,4 +1,3 @@
-use std::thread;
 use serde::Deserialize;
 use redis::{Commands, Connection};
 use strum_macros::{Display};
@@ -8,15 +7,12 @@ use super::city::City;
 use rand::seq::SliceRandom;
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::time::{Duration, SystemTime, UNIX_EPOCH};
 
 #[derive(Display, Debug)]
 pub enum SimState {
     Loading,
     Ready,
-    InProgress,
-    FastForward,
-    Finished
+    Running,
 }
 
 #[derive(Display, PartialEq, Debug, Deserialize)]
@@ -25,8 +21,14 @@ enum Command {
     ReleaseTenant(String),       // player_id
     MoveTenant(String, usize),   // player_id, unit_id
     DOMAAdd(String, f32),        // player_id, amount
+    Run(usize),                  // steps
+    Reset,                       //
 }
 
+pub enum Control {
+    Run(usize),
+    Reset
+}
 
 pub struct PlayManager {
     con: Connection,
@@ -102,21 +104,10 @@ impl PlayManager {
         Ok(())
     }
 
-    pub fn wait(&self, seconds: u64) {
-        thread::sleep(Duration::from_secs(seconds));
-    }
-
     pub fn sync_step(&self, step: usize, steps: usize) -> redis::RedisResult<()> {
         self.con.set("game_step", step)?;
         self.con.set("game_progress", step as f32/steps as f32)
     }
-
-    // pub fn wait_turn(&self, seconds: u64) {
-    //     let start = SystemTime::now().duration_since(UNIX_EPOCH).unwrap().as_secs();
-    //     let end = start + seconds;
-    //     let _: () = self.con.set("turn_timer", format!("{}-{}", start, end)).unwrap();
-    //     self.wait(seconds)
-    // }
 
     fn set_state(&self, state: SimState) -> redis::RedisResult<()> {
         self.con.set("game_state", state.to_string().to_lowercase())?;
@@ -127,61 +118,33 @@ impl PlayManager {
         self.set_state(SimState::Ready)
     }
 
-    pub fn set_in_progress(&self) -> redis::RedisResult<()> {
-        self.set_state(SimState::InProgress)
+    pub fn set_running(&self) -> redis::RedisResult<()> {
+        self.set_state(SimState::Running)
     }
 
     pub fn set_loading(&self) -> redis::RedisResult<()> {
         self.set_state(SimState::Loading)
     }
 
-    pub fn set_fast_forward(&self) -> redis::RedisResult<()> {
-        self.set_state(SimState::FastForward)
-    }
-
-    pub fn set_finished(&self) -> redis::RedisResult<()> {
-        self.set_state(SimState::Finished)
-    }
-
-    pub fn reset_ready_players(&self) -> redis::RedisResult<()> {
-        self.con.del("ready_players")
-    }
-
     pub fn reset(&mut self) -> redis::RedisResult<()> {
-        self.con.del("game_step")?;
-        self.con.del("cmds")?;
-        self.con.del("active_players")?;
-        self.con.del("active_tenants")?;
         self.players.clear();
-        self.reset_ready_players()
+        self.con.del("game_step")?;
+        self.con.del("cmds")
     }
 
-    pub fn all_players_ready(&mut self, mut sim: &mut Simulation, started: bool) -> bool {
-        if started {
-            println!("Waiting for players...");
-        } else {
-            println!("Waiting for players to join...");
-        }
-        let mut all_players_ready = false;
-        while !all_players_ready {
-            self.process_commands(&mut sim).unwrap();
-            self.sync_players(&sim.tenants, &sim.city).unwrap();
-            let ready_players: Vec<String> = self.con.lrange("ready_players", 0, -1).unwrap();
-            let active_players: Vec<String> = self.con.lrange("active_players", 0, -1).unwrap();
-            all_players_ready = active_players.iter().all(|id| {
-                ready_players.contains(id)
-            });
-
-            // If game hasn't started yet, wait for players to join
-            if !started {
-                all_players_ready = all_players_ready && active_players.len() > 0;
+    pub fn wait_for_control(&mut self, sim: &mut Simulation) -> Control {
+        loop {
+            let control = self.process_commands(sim);
+            match control {
+                Some(ctrl) => return ctrl,
+                None => continue
             }
         }
-        all_players_ready
     }
 
-    pub fn process_commands(&mut self, sim: &mut Simulation) -> redis::RedisResult<()> {
-        let cmds: Vec<String> = self.con.lrange("cmds", 0, -1)?;
+    pub fn process_commands(&mut self, sim: &mut Simulation) -> Option<Control> {
+        let cmds: Vec<String> = self.con.lrange("cmds", 0, -1).unwrap();
+        let mut control = None;
         for cmd in cmds {
             match serde_json::from_str(&cmd).unwrap() {
                 Command::SelectTenant(p_id, t_id) => {
@@ -217,10 +180,17 @@ impl PlayManager {
                         },
                         None => {}
                     }
+                },
+                Command::Run(n) => {
+                    control = Some(Control::Run(n));
+                },
+                Command::Reset => {
+                    control = Some(Control::Reset);
                 }
             }
         }
 
-        self.con.del("cmds")
+        let _: () = self.con.del("cmds").unwrap();
+        control
     }
 }

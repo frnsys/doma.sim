@@ -22,7 +22,7 @@ mod stats;
 mod sync;
 use self::config::Config;
 use self::sim::Simulation;
-use self::play::PlayManager;
+use self::play::{PlayManager, Control};
 use pbr::ProgressBar;
 use rand::rngs::StdRng;
 use rand::SeedableRng;
@@ -39,7 +39,7 @@ fn save_run_data(sim: &Simulation, history: &Vec<Value>, conf: &Config) {
         "history": history,
         "meta": {
             "seed": conf.seed,
-            "design": conf.sim.design_id,
+            "design": conf.design_id,
             "tenants": sim.tenants.len(),
             "units": sim.city.units.len(),
             "occupancy": sim.city.units.iter().fold(0, |acc, u| acc + u.occupancy)
@@ -68,95 +68,57 @@ fn save_run_data(sim: &Simulation, history: &Vec<Value>, conf: &Config) {
 fn main() {
     let conf = config::load_config();
     let debug = conf.debug;
-    let steps = if debug {
-        conf.steps
-    } else {
-        conf.play.turn_sequence.iter().fold(0, |acc, steps| acc + steps) + conf.play.burn_in
-    };
+    let steps = conf.steps;
     let mut rng: StdRng = SeedableRng::seed_from_u64(conf.seed);
 
     let mut play = PlayManager::new();
-    play.reset().unwrap();
-    play.set_loading().unwrap();
-
     loop {
-        let mut turn_sequence = conf.play.turn_sequence.clone();
-        let mut switch_step = if debug {
-            conf.steps
-        } else {
-            conf.play.burn_in + turn_sequence.remove(0)
-        };
+        play.reset().unwrap();
+        play.set_loading().unwrap();
 
         // Load and setup world
-        let design = design::load_design(&conf.sim.design_id);
-        let mut sim = Simulation::new(design, &conf.sim, &mut rng);
+        let design = design::load_design(&conf.design_id);
+        let mut sim = Simulation::new(design, &conf, &mut rng);
         println!("{:?} tenants", sim.tenants.len());
 
-        let mut fastfw = false;
-        let mut started = false;
-        let mut history = Vec::with_capacity(steps);
-        let mut pb = ProgressBar::new(steps as u64);
+        if debug {
+            let mut history = Vec::with_capacity(steps);
+            let mut pb = ProgressBar::new(steps as u64);
+            for _ in 0..steps {
+                sim.step(&mut rng, &conf);
+                history.push(stats::stats(&sim));
+                pb.inc();
+            }
+            save_run_data(&sim, &history, &conf);
 
-        if !debug {
+            // Run only once
+            break;
+
+        } else {
+
             // Setup tenants for players to choose
             play.gen_player_tenant_pool(&sim.tenants);
             play.set_ready().unwrap();
             println!("Ready: Session {}", Local::now().to_rfc3339());
-        }
 
-        for step in 0..steps {
-            let burn_in = step < conf.play.burn_in;
-            if debug || fastfw || burn_in || play.all_players_ready(&mut sim, started) {
-                if !debug {
-                    play.sync_step(step, steps).unwrap();
-                    play.process_commands(&mut sim).unwrap();
+            loop {
+                // Blocks until a run command is received;
+                // will process other commands while waiting
+                let control = play.wait_for_control(&mut sim);
+                match control {
+                    Control::Run(steps) => {
+                        play.set_running().unwrap();
+                        for step in 0..steps {
+                            sim.step(&mut rng, &conf);
+                            play.sync_step(step, steps).unwrap();
+                        }
+                        sync::sync(sim.time, &sim.city, &sim.design, stats::stats(&sim)).unwrap();
+                        play.sync_players(&sim.tenants, &sim.city).unwrap();
+                        play.set_ready().unwrap();
+                    },
+                    Control::Reset => continue
                 }
-
-                sim.step(step, &mut rng, &conf.sim);
-
-                // Fast forwarding into the future
-                if !debug {
-                    if step + 1 >= switch_step {
-                        switch_step = step + turn_sequence.remove(0);
-                        fastfw = !fastfw;
-                    }
-                    if fastfw {
-                        println!("Fast forwarding...");
-                        play.set_fast_forward().unwrap();
-                        // play.release_player_tenants(&mut sim.tenants);
-                    } else if burn_in {
-                        println!("Burn in...");
-                    } else {
-                        started = true;
-                        println!("Normal speed...");
-                        play.set_in_progress().unwrap();
-                    }
-
-                    sync::sync(step, &sim.city, &sim.design, stats::stats(&sim)).unwrap();
-                    play.sync_players(&sim.tenants, &sim.city).unwrap();
-                    play.reset_ready_players().unwrap();
-
-                    // if !fastfw && !burn_in {
-                    //     play.wait_turn(conf.play.min_step_delay);
-                    // }
-                } else {
-                    history.push(stats::stats(&sim));
-                }
-
-                pb.inc();
             }
-        }
-        // End of run
-
-        if debug {
-            save_run_data(&sim, &history, &conf);
-
-            // If debug, run only once
-            break;
-        } else {
-            // Wait between runs
-            play.set_finished().unwrap();
-            play.wait(conf.play.pause_between_runs);
         }
     }
 }
