@@ -7,6 +7,7 @@ use super::city::City;
 use rand::seq::SliceRandom;
 use serde_json::{json, Value};
 use std::collections::HashMap;
+use rand::rngs::StdRng;
 
 #[derive(Display, Debug)]
 pub enum SimState {
@@ -21,6 +22,7 @@ enum Command {
     ReleaseTenant(String),       // player_id
     MoveTenant(String, usize),   // player_id, unit_id
     DOMAAdd(String, f32),        // player_id, amount
+    DOMAPreach(String, f32),     // player_id, amount
     Run(usize),                  // steps
     Reset,                       //
 }
@@ -170,9 +172,9 @@ impl PlayManager {
         self.con.del("cmds")
     }
 
-    pub fn wait_for_control(&mut self, sim: &mut Simulation) -> Control {
+    pub fn wait_for_control(&mut self, sim: &mut Simulation, rng: &mut StdRng) -> Control {
         loop {
-            let control = self.process_commands(sim);
+            let control = self.process_commands(sim, rng);
             match control {
                 Some(ctrl) => return ctrl,
                 None => continue
@@ -180,7 +182,7 @@ impl PlayManager {
         }
     }
 
-    pub fn process_commands(&mut self, sim: &mut Simulation) -> Option<Control> {
+    pub fn process_commands(&mut self, sim: &mut Simulation, rng: &mut StdRng) -> Option<Control> {
         let mut control = None;
         loop {
             let cmd_raw: Option<String> = self.con.lpop("cmds").unwrap();
@@ -233,10 +235,24 @@ impl PlayManager {
                             }
                         },
                         Command::DOMAAdd(p_id, amount) => {
-                            println!("Player {:?} adding to {:?} DOMA", p_id, amount);
+                            println!("Player {:?} adding {:?} to DOMA", p_id, amount);
                             match self.players.get(&p_id) {
                                 Some(&t_id) => {
                                     sim.doma.add_funds(t_id, amount);
+                                },
+                                None => {}
+                            }
+                        },
+                        Command::DOMAPreach(p_id, amount) => {
+                            println!("Player {:?} preaching {:?}", p_id, amount);
+                            match self.players.get(&p_id) {
+                                Some(&tenant_id) => {
+                                    sim.conf.encounter_rate = f32::max(sim.conf.encounter_rate + amount, 0.75);
+                                    let infected = sim.social_graph.contagion(tenant_id, sim.conf.encounter_rate, sim.conf.transmission_rate, rng);
+                                    for t_id in infected {
+                                        let t = &sim.tenants[t_id];
+                                        sim.doma.add_funds(t_id, sim.conf.base_contribute_percent * t.income);
+                                    }
                                 },
                                 None => {}
                             }

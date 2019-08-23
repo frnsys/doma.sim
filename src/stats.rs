@@ -86,7 +86,7 @@ pub fn stats(sim: &Simulation) -> Value {
                     let data = landlord_data.entry(unit.owner.1).or_insert((0., 0.));
                     data.0 += unit.condition;
                     data.1 += mean_adjusted_rent_per_area;
-                }
+                },
                 AgentType::DOMA => {
                     doma_data.0 += unit.condition;
                     doma_data.1 += mean_adjusted_rent_per_area;
@@ -178,6 +178,7 @@ pub fn stats(sim: &Simulation) -> Value {
         "mean_offers": mean_offers/n_units,
         "unique_landlords": unique_landlords.len(),
         "doma_members": sim.doma.shares.len() as f32/sim.tenants.len() as f32,
+        "doma_raised": sim.doma.raised,
         "doma_property_fund": sim.doma.funds,
         "mean_desirability": mean_desirability/n_parcels,
         // 'doma_total_dividend_payout': self.doma.last_payout,

@@ -4,7 +4,7 @@ use std::env;
 use std::fs::File;
 use std::io::BufReader;
 
-#[derive(Deserialize, Debug)]
+#[derive(Deserialize, Clone, Debug)]
 #[serde(rename_all = "UPPERCASE")]
 pub struct Config {
     pub design_id: String,
@@ -20,6 +20,10 @@ pub struct Config {
     pub rent_increase_rate: f32,
     pub moving_penalty: f32,
     pub friend_limit: usize,
+    pub transmission_rate: f32,
+    pub encounter_rate: f32,
+    pub base_contribute_prob: f32,
+    pub base_contribute_percent: f32,
 
     #[serde(default)]
     pub steps: usize,

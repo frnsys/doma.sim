@@ -30,7 +30,7 @@ impl SocialGraph {
         }
     }
 
-    pub fn traverse(&self, start_id: usize, p: f32, rng: &mut StdRng) -> FnvHashSet<usize> {
+    pub fn contagion(&self, start_id: usize, p: f32, t: f32, rng: &mut StdRng) -> FnvHashSet<usize> {
         let mut nodes = FnvHashSet::default();
         let mut next = FnvHashSet::default();
         let mut fringe = FnvHashSet::default();
@@ -45,8 +45,13 @@ impl SocialGraph {
 
                     // Don't revisit nodes
                     if !nodes.contains(&n) {
-                        let roll: f32 = rng.gen();
-                        if roll < p {
+                        // Do the two encounter each other?
+                        let roll_p: f32 = rng.gen();
+
+                        // Does the other person become infected?
+                        let roll_t: f32 = rng.gen();
+
+                        if roll_p < p && roll_t < t {
                             nodes.insert(n);
                             next.insert(n);
                         }

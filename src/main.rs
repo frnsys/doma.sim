@@ -77,7 +77,7 @@ fn main() {
 
         // Load and setup world
         let design = design::load_design(&conf.design_id);
-        let mut sim = Simulation::new(design, &conf, &mut rng);
+        let mut sim = Simulation::new(design, conf.clone(), &mut rng);
         println!("{:?} tenants", sim.tenants.len());
         play.reset().unwrap();
 
@@ -85,11 +85,11 @@ fn main() {
             let mut history = Vec::with_capacity(steps);
             let mut pb = ProgressBar::new(steps as u64);
             for _ in 0..steps {
-                sim.step(&mut rng, &conf);
+                sim.step(&mut rng);
                 history.push(stats::stats(&sim));
                 pb.inc();
             }
-            save_run_data(&sim, &history, &conf);
+            save_run_data(&sim, &history, &sim.conf);
 
             // Run only once
             break;
@@ -105,13 +105,13 @@ fn main() {
             loop {
                 // Blocks until a run command is received;
                 // will process other commands while waiting
-                let control = play.wait_for_control(&mut sim);
+                let control = play.wait_for_control(&mut sim, &mut rng);
                 match control {
                     Control::Run(steps) => {
                         println!("Running for {:?} steps...", steps);
                         play.set_running().unwrap();
                         for step in 0..steps {
-                            sim.step(&mut rng, &conf);
+                            sim.step(&mut rng);
                             play.sync_step(step, steps).unwrap();
                         }
                         sync::sync(sim.time, &sim.city, &sim.design, stats::stats(&sim)).unwrap();

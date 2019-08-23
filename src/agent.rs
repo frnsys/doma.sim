@@ -186,7 +186,7 @@ impl Tenant {
                     );
                 if best_amount > 0. {
                     unit.value = best_amount;
-                    unit.owner = (AgentType::Landlord, landlord);
+                    unit.owner = (typ, landlord);
                     transfers.push((typ, landlord, u, best_amount));
                 }
             }
@@ -380,7 +380,7 @@ impl Landlord {
                     );
                 if best_amount > 0. {
                     unit.value = best_amount;
-                    unit.owner = (AgentType::Landlord, landlord);
+                    unit.owner = (typ, landlord);
                     transfers.push((typ, landlord, u, best_amount));
                 }
             }
@@ -399,6 +399,7 @@ impl Landlord {
 
 pub struct DOMA {
     pub funds: f32,
+    pub raised: f32,
     pub shares: FnvHashMap<usize, f32>,
     pub units: Vec<usize>,
     maintenance: f32,
@@ -414,6 +415,7 @@ impl DOMA {
     pub fn new(funds: f32, p_rent_share: f32, p_reserves: f32, p_expenses: f32) -> DOMA {
         DOMA {
             funds: funds,
+            raised: 0.,
             shares: FnvHashMap::default(),
             maintenance: 1.,
             units: Vec::new(),
@@ -519,6 +521,7 @@ impl DOMA {
 
     pub fn add_funds(&mut self, tenant_id: usize, amount: f32) {
         self.funds += amount;
+        self.raised += amount;
         let share = self.shares.entry(tenant_id).or_insert(0.);
         *share += amount;
     }

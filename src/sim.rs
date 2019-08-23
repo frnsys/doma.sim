@@ -14,6 +14,7 @@ pub struct Simulation {
     pub time: usize,
     pub city: City,
     pub doma: DOMA,
+    pub conf: Config,
     pub tenants: Vec<Tenant>,
     pub landlords: Vec<Landlord>,
     pub social_graph: SocialGraph,
@@ -26,7 +27,7 @@ pub struct Simulation {
 }
 
 impl Simulation {
-    pub fn new(design: Design, config: &Config, mut rng: &mut StdRng) -> Simulation {
+    pub fn new(design: Design, config: Config, mut rng: &mut StdRng) -> Simulation {
         // Generate city from provided design
         let mut city = City::new(&design, &mut rng);
 
@@ -143,6 +144,7 @@ impl Simulation {
         Simulation {
             time: 0,
             city: city,
+            conf: config,
             landlords: landlords,
             tenants: tenants,
             doma: doma,
@@ -154,7 +156,7 @@ impl Simulation {
         }
     }
 
-    pub fn step(&mut self, mut rng: &mut StdRng, conf: &Config) {
+    pub fn step(&mut self, mut rng: &mut StdRng) {
         for tenant in &mut self.tenants {
             self.transfers.extend(
                 tenant.check_purchase_offers(&mut self.city, self.design.city.price_to_rent_ratio),
@@ -187,7 +189,7 @@ impl Simulation {
                 self.time,
                 self.design.city.price_to_rent_ratio,
                 &mut rng,
-                &conf,
+                &self.conf,
             );
         }
 
@@ -208,8 +210,19 @@ impl Simulation {
                     self.time,
                     &mut vacant_units,
                     &mut rng,
-                    &conf,
+                    &self.conf,
                 );
+
+                // Word-of-mouth/contagion
+                let roll: f32 = rng.gen();
+                if roll < self.conf.base_contribute_prob {
+                    self.doma.add_funds(tenant_id, self.conf.base_contribute_percent * tenant.income);
+                    let infected = self.social_graph.contagion(tenant_id, self.conf.encounter_rate, self.conf.transmission_rate, &mut rng);
+                    for t_id in infected {
+                        let t = &self.tenants[t_id];
+                        self.doma.add_funds(t_id, self.conf.base_contribute_percent * t.income);
+                    }
+                }
             }
         }
 
@@ -223,11 +236,11 @@ impl Simulation {
                 let sold: Vec<&Unit> = units.iter().filter(|u| u.recently_sold).cloned().collect();
                 let mean_value_per_area = if sold.len() == 0 {
                     units.iter().fold(0., |acc, u| {
-                        acc + (u.value_per_area() * conf.base_appreciation)
+                        acc + (u.value_per_area() * self.conf.base_appreciation)
                     }) / units.len() as f32
                 } else {
                     sold.iter().fold(0., |acc, u| {
-                        acc + (u.value_per_area() * conf.base_appreciation)
+                        acc + (u.value_per_area() * self.conf.base_appreciation)
                     }) / sold.len() as f32
                 };
 
@@ -247,14 +260,14 @@ impl Simulation {
         for (neighb_id, parcel_ids) in self.city.residential_parcels_by_neighborhood.iter().enumerate() {
             let last_val = if self.time > 0 {
                 self.city.neighborhood_trends[neighb_id].get([
-                    (self.time - 1) as f64 / conf.desirability_stretch_factor,
+                    (self.time - 1) as f64 / self.conf.desirability_stretch_factor,
                     0.,
                 ])
             } else {
                 0.
             };
             let val = self.city.neighborhood_trends[neighb_id]
-                .get([self.time as f64 / conf.desirability_stretch_factor, 0.]);
+                .get([self.time as f64 / self.conf.desirability_stretch_factor, 0.]);
             let change = (val - last_val) as f32;
             for p in parcel_ids {
                 let parcel = self.city.parcels.get_mut(p).unwrap();
