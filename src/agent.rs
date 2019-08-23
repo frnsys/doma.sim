@@ -24,7 +24,7 @@ pub enum AgentType {
 #[derive(Debug)]
 pub struct Tenant {
     pub id: usize,
-    pub income: f32,
+    pub income: f32, // monthly
     pub unit: Option<usize>,
     pub work: Position,
     pub units: Vec<usize>,

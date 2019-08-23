@@ -297,6 +297,16 @@ impl City {
             neighborhood_trends: neighborhood_trends,
         }
     }
+
+    pub fn neighborhood_for_pos(&self, pos: &Position) -> Option<&Neighborhood> {
+        let parcel = self.parcels.get(&pos).unwrap();
+        match parcel.neighborhood {
+            Some(neighb_id) => {
+                Some(&self.neighborhoods[neighb_id])
+            },
+            None => None
+        }
+    }
 }
 
 pub struct Unit {

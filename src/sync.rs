@@ -57,6 +57,7 @@ pub fn jsonify(month: usize, city: &City, design: &Design, stats: Value) -> Valu
 
     json!({
         "time": month,
+        "name": design.city.name,
         "map": {
             "rows": city.grid.rows,
             "cols": city.grid.cols,

@@ -45,7 +45,9 @@ impl Simulation {
         }
         let work_dist = WeightedIndex::new(commercial_weights).unwrap();
         let vacancies: Vec<usize> = city.units.iter().map(|u| u.id).collect();
-        let mut tenants: Vec<Tenant> = (0..design.city.population)
+        let population = 1000;
+        let mut tenants: Vec<Tenant> = (0..population)
+        // let mut tenants: Vec<Tenant> = (0..design.city.population)
             .map(|i| {
                 let tenant_id = i as usize;
                 let income = income_dist.sample(&mut rng);
@@ -90,7 +92,8 @@ impl Simulation {
             .collect();
 
         // Create social network
-        let social_graph = SocialGraph::new(design.city.population as usize,
+        let social_graph = SocialGraph::new(population as usize,
+        // let social_graph = SocialGraph::new(design.city.population as usize,
                                             config.friend_limit, &mut rng);
 
         // Distribute ownership of units

@@ -25,15 +25,9 @@ pub struct Neighborhood {
 }
 
 #[derive(Deserialize, Debug)]
-pub struct IncomeRange {
-    pub high: usize,
-    pub low: usize,
-    pub p: f32,
-}
-
-#[derive(Deserialize, Debug)]
 #[serde(rename_all = "camelCase")]
 pub struct CityConfig {
+    pub name: String,
     pub price_per_sqm: f32,
     pub price_to_rent_ratio: f32,
     pub landlords: u32,

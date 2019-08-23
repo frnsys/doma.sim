@@ -46,16 +46,42 @@ impl PlayManager {
         }
     }
 
-    pub fn gen_player_tenant_pool(&self, tenants: &Vec<Tenant>) {
+    pub fn gen_player_tenant_pool(&self, tenants: &Vec<Tenant>, city: &City) {
         let mut rng = rand::thread_rng();
         let tenants = tenants.choose_multiple(&mut rng, 100);
         let _: () = self.con.del("tenants").unwrap();
         for t in tenants {
+            let mut adjusted_rent = None;
+            let mut unit_neighborhood = None;
+            match t.unit {
+                Some(u_id) => {
+                    let u = &city.units[u_id];
+                    adjusted_rent = Some(t.adjusted_rent(&u));
+                    unit_neighborhood = match city.neighborhood_for_pos(&u.pos) {
+                        Some(neighb) => Some(&neighb.name),
+                        None => None
+                    };
+                },
+                None => {}
+            };
+
+            let work_neighborhood = match city.neighborhood_for_pos(&t.work) {
+                Some(neighb) => Some(&neighb.name),
+                None => None
+            };
+
             let _: () = self.con.lpush("tenants", json!({
                 "id": t.id,
                 "income": t.income,
-                "work": t.work,
-                "unit": t.unit
+                "work": {
+                    "pos": t.work,
+                    "neighborhood": work_neighborhood
+                },
+                "rent": adjusted_rent,
+                "unit": {
+                    "id": t.unit,
+                    "neighborhood": unit_neighborhood
+                }
             }).to_string()).unwrap();
         }
     }
@@ -63,8 +89,8 @@ impl PlayManager {
     pub fn sync_players(&self, tenants: &Vec<Tenant>, city: &City) -> redis::RedisResult<()> {
         for (player_id, &t_id) in &self.players {
             let tenant = &tenants[t_id];
-            let mut adjusted_rent = 0.;
-            let monthly_income = tenant.income as f32/12.;
+            let mut adjusted_rent = None;
+            let mut unit_neighborhood = None;
             let unit = match tenant.unit {
                 Some(u_id) => {
                     Some(&city.units[u_id])
@@ -74,19 +100,30 @@ impl PlayManager {
             let desirability = match unit {
                 Some(unit) => {
                     let parcel = &city.parcels.get(&unit.pos).unwrap();
-                    adjusted_rent = tenant.adjusted_rent(&unit);
+                    adjusted_rent = Some(tenant.adjusted_rent(&unit));
+                    unit_neighborhood = match city.neighborhood_for_pos(&unit.pos) {
+                        Some(neighb) => Some(&neighb.name),
+                        None => None
+                    };
                     tenant.desirability(unit, parcel)
                 },
                 None => -1.
+            };
+
+            let work_neighborhood = match city.neighborhood_for_pos(&tenant.work) {
+                Some(neighb) => Some(&neighb.name),
+                None => None
             };
 
             let key = format!("player:{}:tenant", player_id);
             self.con.set(key, json!({
                 "id": t_id,
                 "income": tenant.income,
-                "monthlyDisposableIncome": monthly_income - adjusted_rent,
                 "rent": adjusted_rent,
-                "work": tenant.work,
+                "work": {
+                    "pos": tenant.work,
+                    "neighborhood": work_neighborhood
+                },
                 "desirability": desirability,
                 "unit": match unit {
                     Some(unit) => {
@@ -94,7 +131,8 @@ impl PlayManager {
                             "id": unit.id,
                             "rent": unit.rent,
                             "condition": unit.condition,
-                            "pos": unit.pos
+                            "pos": unit.pos,
+                            "neighborhood": unit_neighborhood
                         })
                     },
                     None => Value::Null
@@ -155,6 +193,16 @@ impl PlayManager {
                             self.players.insert(p_id, t_id);
                             let tenant = &mut sim.tenants[t_id];
                             tenant.player = true;
+
+                            // Evict from existing unit, if any
+                            match tenant.unit {
+                                Some(_u_id) => {
+                                    let unit = &mut sim.city.units[_u_id];
+                                    unit.tenants.remove(&t_id);
+                                    tenant.unit = None;
+                                },
+                                None => {}
+                            }
                         },
                         Command::ReleaseTenant(p_id) => {
                             println!("Player left: {:?}", p_id);
@@ -166,17 +214,26 @@ impl PlayManager {
                             }
                         },
                         Command::MoveTenant(p_id, u_id) => {
+                            println!("Player {:?} moving to: {:?}", p_id, u_id);
                             match self.players.get(&p_id) {
                                 Some(&t_id) => {
+                                    let tenant = &mut sim.tenants[t_id];
+                                    match tenant.unit {
+                                        Some(_u_id) => {
+                                            let unit = &mut sim.city.units[_u_id];
+                                            unit.tenants.remove(&t_id);
+                                        },
+                                        None => {}
+                                    }
                                     let unit = &mut sim.city.units[u_id];
                                     unit.tenants.insert(t_id);
-                                    let tenant = &mut sim.tenants[t_id];
                                     tenant.unit = Some(u_id);
                                 },
                                 None => {}
                             }
                         },
                         Command::DOMAAdd(p_id, amount) => {
+                            println!("Player {:?} adding to {:?} DOMA", p_id, amount);
                             match self.players.get(&p_id) {
                                 Some(&t_id) => {
                                     sim.doma.add_funds(t_id, amount);
