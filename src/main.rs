@@ -20,6 +20,7 @@ mod play;
 mod sim;
 mod stats;
 mod sync;
+mod policy;
 use self::config::Config;
 use self::sim::Simulation;
 use self::play::{PlayManager, Control};

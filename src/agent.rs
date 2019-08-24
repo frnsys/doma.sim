@@ -238,6 +238,8 @@ impl Landlord {
         city: &mut City,
         month: usize,
         price_to_rent_ratio: f32,
+        rent_freeze: bool,
+        market_tax: bool,
         rng: &mut StdRng,
         conf: &Config,
     ) {
@@ -266,7 +268,7 @@ impl Landlord {
             } else {
                 // Year-long leases
                 let elapsed = month as i32 - unit.lease_month as i32;
-                if elapsed > 0 && elapsed % 12 == 0 {
+                if !rent_freeze && elapsed > 0 && elapsed % 12 == 0 {
                     // TODO this can be smarter
                     // i.e. depend on gap b/w
                     // current rent and rent estimate/projection
@@ -278,26 +280,28 @@ impl Landlord {
 
         // Make purchase offers
         // Choose random neighborhood weighted by investment potential
-        let neighbs: Vec<usize> = self.invest_ests.keys().cloned().collect();
-        let neighb_weights: Vec<f32> = neighbs
-            .iter()
-            .map(|neighb_id| f32::max(0., self.invest_ests[neighb_id]))
-            .collect();
-        let neighb_id = if neighb_weights.iter().all(|&w| w == 0.) {
-            *neighbs.choose(rng).unwrap()
-        } else {
-            let neighb_dist = WeightedIndex::new(&neighb_weights).unwrap();
-            neighbs[neighb_dist.sample(rng)]
-        };
-        let est_future_rent = self.trend_ests[&neighb_id];
-        let sample = city.units_by_neighborhood[neighb_id].choose_multiple(rng, conf.sample_size);
-        for &u_id in sample {
-            let unit = &mut city.units[u_id];
-            let parcel = &city.parcels.get(&unit.pos).unwrap();
-            let est_value =
-                est_future_rent * unit.area * 12. * price_to_rent_ratio * parcel.desirability; // TODO was *100
-            if est_value > 0. && est_value > unit.value {
-                unit.offers.push((AgentType::Landlord, self.id, est_value));
+        if !market_tax {
+            let neighbs: Vec<usize> = self.invest_ests.keys().cloned().collect();
+            let neighb_weights: Vec<f32> = neighbs
+                .iter()
+                .map(|neighb_id| f32::max(0., self.invest_ests[neighb_id]))
+                .collect();
+            let neighb_id = if neighb_weights.iter().all(|&w| w == 0.) {
+                *neighbs.choose(rng).unwrap()
+            } else {
+                let neighb_dist = WeightedIndex::new(&neighb_weights).unwrap();
+                neighbs[neighb_dist.sample(rng)]
+            };
+            let est_future_rent = self.trend_ests[&neighb_id];
+            let sample = city.units_by_neighborhood[neighb_id].choose_multiple(rng, conf.sample_size);
+            for &u_id in sample {
+                let unit = &mut city.units[u_id];
+                let parcel = &city.parcels.get(&unit.pos).unwrap();
+                let est_value =
+                    est_future_rent * unit.area * 12. * price_to_rent_ratio * parcel.desirability; // TODO was *100
+                if est_value > 0. && est_value > unit.value {
+                    unit.offers.push((AgentType::Landlord, self.id, est_value));
+                }
             }
         }
     }
@@ -406,13 +410,15 @@ pub struct DOMA {
 
     // Percent of rent paid to DOMA
     // that converts to shares
-    p_rent_share: f32,
-    p_reserves: f32,
-    p_expenses: f32,
+    pub p_rent_share: f32,
+    pub p_reserves: f32,
+    pub p_expenses: f32,
+
+    pub rent_income_limit: Option<f32>,
 }
 
 impl DOMA {
-    pub fn new(funds: f32, p_rent_share: f32, p_reserves: f32, p_expenses: f32) -> DOMA {
+    pub fn new(funds: f32, p_rent_share: f32, p_reserves: f32, p_expenses: f32, rent_income_limit: Option<f32>) -> DOMA {
         DOMA {
             funds: funds,
             raised: 0.,
@@ -422,10 +428,22 @@ impl DOMA {
             p_rent_share: p_rent_share,
             p_reserves: p_reserves,
             p_expenses: p_expenses,
+            rent_income_limit: rent_income_limit
         }
     }
 
     pub fn step(&mut self, city: &mut City, tenants: &mut Vec<Tenant>, rng: &mut StdRng) {
+        // Mean income, for setting rent limit
+        let mean_income = tenants.iter().fold(0., |acc, t| acc + t.income)/tenants.len() as f32;
+        let rent_cap = match self.rent_income_limit {
+            Some(limit) => {
+                mean_income * limit
+            },
+            None => {
+                std::f32::INFINITY
+            }
+        };
+
         // Collect rent
         let mut rent = 0.;
         for &u_id in &self.units {
@@ -447,6 +465,9 @@ impl DOMA {
             } else {
                 continue;
             }
+
+            // Adjust rents
+            unit.rent = f32::min(unit.rent, rent_cap);
         }
 
         // Pay dividends

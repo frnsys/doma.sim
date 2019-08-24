@@ -2,6 +2,7 @@ use super::agent::{AgentType, Landlord, Tenant, DOMA};
 use super::city::{City, Unit};
 use super::social::{SocialGraph};
 use super::config::Config;
+use super::policy::Policy;
 use super::design::Design;
 use noise::NoiseFn;
 use rand::distributions::WeightedIndex;
@@ -17,6 +18,7 @@ pub struct Simulation {
     pub conf: Config,
     pub tenants: Vec<Tenant>,
     pub landlords: Vec<Landlord>,
+    pub policies: Vec<(Policy, usize)>,
     pub social_graph: SocialGraph,
     pub design: Design,
     transfers: Vec<(AgentType, usize, usize, f32)>,
@@ -29,6 +31,7 @@ pub struct Simulation {
 impl Simulation {
     pub fn new(design: Design, config: Config, mut rng: &mut StdRng) -> Simulation {
         // Generate city from provided design
+        println!("Creating city...");
         let mut city = City::new(&design, &mut rng);
 
         // Create landlords
@@ -37,6 +40,7 @@ impl Simulation {
             .collect();
 
         // Create tenants
+        println!("Creating tenants...");
         let income_dist = LogNormal::new(design.city.income_mu, design.city.income_sigma).unwrap();
         let mut commercial = Vec::new();
         let mut commercial_weights = Vec::new();
@@ -93,9 +97,8 @@ impl Simulation {
             .collect();
 
         // Create social network
-        let social_graph = SocialGraph::new(population as usize,
-        // let social_graph = SocialGraph::new(design.city.population as usize,
-                                            config.friend_limit, &mut rng);
+        println!("Creating social network...");
+        let social_graph = SocialGraph::new(tenants.len(), config.friend_limit, &mut rng);
 
         // Distribute ownership of units
         for (_, b) in city.buildings.iter() {
@@ -136,6 +139,7 @@ impl Simulation {
             config.doma_p_rent_share,
             config.doma_p_reserves,
             config.doma_p_expenses,
+            config.doma_rent_income_limit,
         );
 
         let landlord_order = (0..landlords.len()).collect();
@@ -149,6 +153,7 @@ impl Simulation {
             tenants: tenants,
             doma: doma,
             design: design,
+            policies: Vec::new(),
             social_graph: social_graph,
             landlord_order: landlord_order,
             tenant_order: tenant_order,
@@ -157,6 +162,15 @@ impl Simulation {
     }
 
     pub fn step(&mut self, mut rng: &mut StdRng) {
+        let mut rent_freeze = false;
+        let mut market_tax = false;
+        for (p, _) in &self.policies {
+            match p {
+                Policy::RentFreeze => rent_freeze = true,
+                Policy::MarketTax => market_tax = true,
+            }
+        }
+
         for tenant in &mut self.tenants {
             self.transfers.extend(
                 tenant.check_purchase_offers(&mut self.city, self.design.city.price_to_rent_ratio),
@@ -188,6 +202,8 @@ impl Simulation {
                 &mut self.city,
                 self.time,
                 self.design.city.price_to_rent_ratio,
+                rent_freeze,
+                market_tax,
                 &mut rng,
                 &self.conf,
             );
@@ -274,6 +290,17 @@ impl Simulation {
                 parcel.desirability = f32::max(0., parcel.desirability - change);
             }
         }
+
+        // Tick policies
+        self.policies = self.policies.drain(..).filter_map(|(p, duration)| {
+            let d = duration - 1;
+            if d > 0 {
+                Some((p, d))
+            } else {
+                None
+            }
+        }).collect();
+
         self.time += 1;
     }
 }

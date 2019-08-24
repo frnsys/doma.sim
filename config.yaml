@@ -8,10 +8,14 @@ DOMA_STARTING_FUNDS: 2000000
 DOMA_P_RENT_SHARE: 0.1
 
 # Starting percent of rent to DOMA funds
-DOMA_P_RESERVES: 0.05
+DOMA_P_RESERVES: 0.2
 
 # Starting percent of rent to DOMA overhead costs
 DOMA_P_EXPENSES: 0.05
+
+# The upper limit of DOMA rents
+# If set to null, no limit
+DOMA_RENT_INCOME_LIMIT: null
 
 # Scaling value for desirability random walks;
 # higher values mean slower changes

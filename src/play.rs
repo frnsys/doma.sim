@@ -2,6 +2,7 @@ use serde::Deserialize;
 use redis::{Commands, Connection};
 use strum_macros::{Display};
 use super::agent::Tenant;
+use super::policy::Policy;
 use super::sim::Simulation;
 use super::city::City;
 use rand::seq::SliceRandom;
@@ -23,6 +24,9 @@ enum Command {
     MoveTenant(String, usize),   // player_id, unit_id
     DOMAAdd(String, f32),        // player_id, amount
     DOMAPreach(String, f32),     // player_id, amount
+    DOMAConfigure(f32, f32, f32),// p_dividend, p_rent_share, rent_income_limit
+    RentFreeze(usize),           // months
+    MarketTax(usize),            // months
     Run(usize),                  // steps
     Reset,                       //
 }
@@ -256,6 +260,20 @@ impl PlayManager {
                                 },
                                 None => {}
                             }
+                        },
+                        Command::DOMAConfigure(p_dividend, p_rent_share, rent_income_limit) => {
+                            println!("Configuring DOMA {:?}, {:?}, {:?}", p_dividend, p_rent_share, rent_income_limit);
+                            sim.doma.p_reserves = 1.0 - p_dividend - sim.doma.p_expenses;
+                            sim.doma.p_rent_share = p_rent_share;
+                            sim.doma.rent_income_limit = Some(rent_income_limit);
+                        },
+                        Command::RentFreeze(months) => {
+                            println!("Rent Freeze for {:?} months", months);
+                            sim.policies.push((Policy::RentFreeze, months));
+                        },
+                        Command::MarketTax(months) => {
+                            println!("Market Tax for {:?} months", months);
+                            sim.policies.push((Policy::MarketTax, months));
                         },
                         Command::Run(n) => {
                             control = Some(Control::Run(n));

@@ -12,6 +12,7 @@ pub struct Config {
     pub doma_p_rent_share: f32,
     pub doma_p_reserves: f32,
     pub doma_p_expenses: f32,
+    pub doma_rent_income_limit: Option<f32>,
     pub desirability_stretch_factor: f64,
     pub base_appreciation: f32,
     pub sample_size: usize,
