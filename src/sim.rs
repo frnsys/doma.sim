@@ -50,9 +50,8 @@ impl Simulation {
         }
         let work_dist = WeightedIndex::new(commercial_weights).unwrap();
         let vacancies: Vec<usize> = city.units.iter().map(|u| u.id).collect();
-        let population = 1000;
-        let mut tenants: Vec<Tenant> = (0..population)
-        // let mut tenants: Vec<Tenant> = (0..design.city.population)
+        // let mut tenants: Vec<Tenant> = (0..1000)
+        let mut tenants: Vec<Tenant> = (0..design.city.population)
             .map(|i| {
                 let tenant_id = i as usize;
                 let income = income_dist.sample(&mut rng);
@@ -106,11 +105,11 @@ impl Simulation {
                 let u = &mut city.units[u_id];
                 let roll: f32 = rng.gen();
                 u.owner = if !u.vacant() {
-                    if roll < 0.33 {
+                    if roll < 0.5 {
                         let landlord = landlords.choose_mut(&mut rng).unwrap();
                         landlord.units.push(u.id);
                         (AgentType::Landlord, landlord.id)
-                    } else if roll < 0.66 {
+                    } else if roll < 0.75 {
                         let unit_tenants: Vec<usize> = u.tenants.iter().cloned().collect();
                         let t_id = *unit_tenants.choose(&mut rng).unwrap();
                         tenants[t_id].units.push(u.id);
@@ -121,7 +120,7 @@ impl Simulation {
                         (AgentType::Tenant, tenant.id)
                     }
                 } else {
-                    if roll < 0.5 {
+                    if roll < 0.75 {
                         let landlord = landlords.choose_mut(&mut rng).unwrap();
                         landlord.units.push(u.id);
                         (AgentType::Landlord, landlord.id)
@@ -233,7 +232,7 @@ impl Simulation {
                 let roll: f32 = rng.gen();
                 if roll < self.conf.base_contribute_prob {
                     self.doma.add_funds(tenant_id, self.conf.base_contribute_percent * tenant.income);
-                    let infected = self.social_graph.contagion(tenant_id, self.conf.encounter_rate, self.conf.transmission_rate, &mut rng);
+                    let infected = self.social_graph.contagion(tenant_id, self.conf.encounter_rate, self.conf.transmission_rate, self.conf.max_contagion_depth, &mut rng);
                     for t_id in infected {
                         let t = &self.tenants[t_id];
                         self.doma.add_funds(t_id, self.conf.base_contribute_percent * t.income);

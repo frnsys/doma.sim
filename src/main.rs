@@ -99,8 +99,12 @@ fn main() {
 
             // Setup tenants for players to choose
             play.gen_player_tenant_pool(&sim.tenants, &sim.city, sim.conf.tenant_pool_size);
-            play.set_ready().unwrap();
+            println!("Burning in...");
+            for _ in 0..sim.conf.burn_in {
+                sim.step(&mut rng);
+            }
             sync::sync(sim.time, &sim.city, &sim.design, stats::stats(&sim)).unwrap();
+            play.set_ready().unwrap();
             println!("Ready: Session {}", Local::now().to_rfc3339());
 
             loop {
@@ -110,10 +114,12 @@ fn main() {
                 match control {
                     Control::Run(steps) => {
                         println!("Running for {:?} steps...", steps);
+                        let mut pb = ProgressBar::new(steps as u64);
                         play.set_running().unwrap();
                         for step in 0..steps {
                             sim.step(&mut rng);
                             play.sync_step(step, steps).unwrap();
+                            pb.inc();
                         }
                         sync::sync(sim.time, &sim.city, &sim.design, stats::stats(&sim)).unwrap();
                         play.sync_players(&sim.tenants, &sim.city).unwrap();

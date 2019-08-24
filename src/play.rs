@@ -21,6 +21,7 @@ pub enum Status {
 enum Command {
     SelectTenant(String, usize), // player_id, tenant_id
     ReleaseTenant(String),       // player_id
+    ReleaseTenants,              //
     MoveTenant(String, usize),   // player_id, unit_id
     DOMAAdd(String, f32),        // player_id, amount
     DOMAPreach(String, f32),     // player_id, amount
@@ -219,6 +220,11 @@ impl PlayManager {
                                 None => {}
                             }
                         },
+                        Command::ReleaseTenants => {
+                            for t in &mut sim.tenants {
+                                t.player = false;
+                            }
+                        },
                         Command::MoveTenant(p_id, u_id) => {
                             println!("Player {:?} moving to: {:?}", p_id, u_id);
                             match self.players.get(&p_id) {
@@ -252,7 +258,7 @@ impl PlayManager {
                             match self.players.get(&p_id) {
                                 Some(&tenant_id) => {
                                     sim.conf.encounter_rate = f32::max(sim.conf.encounter_rate + amount, 0.75);
-                                    let infected = sim.social_graph.contagion(tenant_id, sim.conf.encounter_rate, sim.conf.transmission_rate, rng);
+                                    let infected = sim.social_graph.contagion(tenant_id, sim.conf.encounter_rate, sim.conf.transmission_rate, sim.conf.max_contagion_depth, rng);
                                     for t_id in infected {
                                         let t = &sim.tenants[t_id];
                                         sim.doma.add_funds(t_id, sim.conf.base_contribute_percent * t.income);

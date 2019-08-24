@@ -60,3 +60,11 @@ BASE_CONTRIBUTE_PERCENT: 0.0025
 # Number of tenants for players
 # to choose from
 TENANT_POOL_SIZE: 200
+
+# Number of steps to "burn in"
+BURN_IN: 32
+
+# Maximum propagation depth
+# for the contagion model;
+# high values can severly degrade speed
+MAX_CONTAGION_DEPTH: 2

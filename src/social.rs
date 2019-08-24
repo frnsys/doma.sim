@@ -30,7 +30,8 @@ impl SocialGraph {
         }
     }
 
-    pub fn contagion(&self, start_id: usize, p: f32, t: f32, rng: &mut StdRng) -> FnvHashSet<usize> {
+    pub fn contagion(&self, start_id: usize, p: f32, t: f32, max_depth: usize, rng: &mut StdRng) -> FnvHashSet<usize> {
+        let mut depth = 0;
         let mut nodes = FnvHashSet::default();
         let mut next = FnvHashSet::default();
         let mut fringe = FnvHashSet::default();
@@ -59,6 +60,10 @@ impl SocialGraph {
                 }
             }
             fringe = next.iter().cloned().collect();
+            depth += 1;
+            if depth >= max_depth {
+                break;
+            }
         }
         nodes
     }
