@@ -11,7 +11,7 @@ use std::collections::HashMap;
 use rand::rngs::StdRng;
 
 #[derive(Display, Debug)]
-pub enum SimState {
+pub enum Status {
     Loading,
     Ready,
     Running,
@@ -52,9 +52,9 @@ impl PlayManager {
         }
     }
 
-    pub fn gen_player_tenant_pool(&self, tenants: &Vec<Tenant>, city: &City) {
+    pub fn gen_player_tenant_pool(&self, tenants: &Vec<Tenant>, city: &City, size: usize) {
         let mut rng = rand::thread_rng();
-        let tenants = tenants.choose_multiple(&mut rng, 100);
+        let tenants = tenants.choose_multiple(&mut rng, size);
         let _: () = self.con.del("tenants").unwrap();
         for t in tenants {
             let mut adjusted_rent = None;
@@ -149,25 +149,25 @@ impl PlayManager {
     }
 
     pub fn sync_step(&self, step: usize, steps: usize) -> redis::RedisResult<()> {
-        self.con.set("game_step", step)?;
-        self.con.set("game_progress", step as f32/steps as f32)
+        self.con.set("step", step)?;
+        self.con.set("step", step as f32/steps as f32)
     }
 
-    fn set_state(&self, state: SimState) -> redis::RedisResult<()> {
-        self.con.set("game_state", state.to_string().to_lowercase())?;
+    fn set_status(&self, state: Status) -> redis::RedisResult<()> {
+        self.con.set("status", state.to_string().to_lowercase())?;
         Ok(())
     }
 
     pub fn set_ready(&self) -> redis::RedisResult<()> {
-        self.set_state(SimState::Ready)
+        self.set_status(Status::Ready)
     }
 
     pub fn set_running(&self) -> redis::RedisResult<()> {
-        self.set_state(SimState::Running)
+        self.set_status(Status::Running)
     }
 
     pub fn set_loading(&self) -> redis::RedisResult<()> {
-        self.set_state(SimState::Loading)
+        self.set_status(Status::Loading)
     }
 
     pub fn reset(&mut self) -> redis::RedisResult<()> {

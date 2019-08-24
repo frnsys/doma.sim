@@ -98,7 +98,7 @@ fn main() {
         } else {
 
             // Setup tenants for players to choose
-            play.gen_player_tenant_pool(&sim.tenants, &sim.city);
+            play.gen_player_tenant_pool(&sim.tenants, &sim.city, sim.conf.tenant_pool_size);
             play.set_ready().unwrap();
             sync::sync(sim.time, &sim.city, &sim.design, stats::stats(&sim)).unwrap();
             println!("Ready: Session {}", Local::now().to_rfc3339());

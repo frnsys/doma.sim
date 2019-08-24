@@ -17,6 +17,7 @@ pub struct Config {
     pub base_appreciation: f32,
     pub sample_size: usize,
     pub tenant_sample_size: usize,
+    pub tenant_pool_size: usize,
     pub trend_months: usize,
     pub rent_increase_rate: f32,
     pub moving_penalty: f32,

@@ -79,7 +79,7 @@ pub fn sync(month: usize, city: &City, design: &Design, stats: Value) -> redis::
     let hash = md5::Md5::digest(state_serialized.as_bytes());
 
     con.set("state", state_serialized)?;
-    con.set("state_key", format!("{:X}", hash))?;
+    con.set("state:key", format!("{:X}", hash))?;
 
     Ok(())
 }
