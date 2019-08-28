@@ -206,7 +206,8 @@ impl City {
                     for _ in 0..n_units {
                         let area = rng.gen_range(neighb.min_area, neighb.max_area) as f32;
                         let rent = design.city.price_per_sqm*area*neighb.desirability;
-                        let value = design.city.price_to_rent_ratio*(rent*12.)*neighb.desirability;
+                        let value = design.city.price_to_rent_ratio*(rent*12.);
+                        // println!("value: {:?}, rent: {:?}", value, rent);
                         let occupancy = max(1, (area/neighb.sqm_per_occupant as f32).round() as usize);
                         let id = units.len();
                         let unit = Unit {

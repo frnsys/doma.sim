@@ -33,17 +33,19 @@ use std::os::unix::fs::symlink;
 use std::path::Path;
 use chrono::{DateTime, Utc, Local};
 
-fn save_run_data(sim: &Simulation, history: &Vec<Value>, conf: &Config) {
+fn save_run_data(sim: &Simulation, history: &Vec<Value>, init: &Value, conf: &Config) {
     let now: DateTime<Utc> = Utc::now();
     let now_str = now.format("%Y.%m.%d.%H.%M.%S").to_string();
     let results = json!({
+        "init": init,
         "history": history,
         "meta": {
             "seed": conf.seed,
             "design": conf.design_id,
             "tenants": sim.tenants.len(),
             "units": sim.city.units.len(),
-            "occupancy": sim.city.units.iter().fold(0, |acc, u| acc + u.occupancy)
+            "occupancy": sim.city.units.iter().fold(0, |acc, u| acc + u.occupancy),
+            "neighborhoods": sim.design.neighborhoods,
         }
     })
     .to_string();
@@ -83,6 +85,7 @@ fn main() {
         play.reset().unwrap();
 
         if debug {
+            let init_stats = stats::init_stats(&sim);
             let mut history = Vec::with_capacity(steps);
             let mut pb = ProgressBar::new(steps as u64);
             for _ in 0..steps {
@@ -90,7 +93,7 @@ fn main() {
                 history.push(stats::stats(&sim));
                 pb.inc();
             }
-            save_run_data(&sim, &history, &sim.conf);
+            save_run_data(&sim, &history, &init_stats, &sim.conf);
 
             // Run only once
             break;
@@ -99,7 +102,7 @@ fn main() {
 
             // Setup tenants for players to choose
             play.gen_player_tenant_pool(&sim.tenants, &sim.city, sim.conf.tenant_pool_size);
-            println!("Burning in...");
+            println!("Burning in for {:?} months...", sim.conf.burn_in);
             for _ in 0..sim.conf.burn_in {
                 sim.step(&mut rng);
             }

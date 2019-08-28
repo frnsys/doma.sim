@@ -1,6 +1,7 @@
 import os
 import json
 import yaml
+import numpy as np
 import matplotlib.pyplot as plt
 from collections import defaultdict
 from datetime import datetime
@@ -10,7 +11,9 @@ plt.style.use('ggplot')
 def make_plots(output_dir):
     os.mkdir(os.path.join(output_dir, 'plots'))
     output = json.load(open(os.path.join(output_dir, 'output.json')))
+    meta = output['meta']
     history = output['history']
+    init = output['init']
     stats = defaultdict(list)
 
     config = yaml.load(open(os.path.join(output_dir, 'config.yaml')))
@@ -37,6 +40,19 @@ def make_plots(output_dir):
 
     fnames = []
 
+    percentiles = [25, 75, 90, 99]
+    colors = ['g', 'c', 'b', 'k']
+    for k, vals in init.items():
+        plt.title('{} (init)'.format(k))
+        plt.hist(vals, bins=200)
+        for i, (p, v) in enumerate(zip(percentiles, np.percentile(vals, percentiles))):
+            plt.axvline(v, 0., 1., label='{}%'.format(p), color=colors[i])
+        plt.legend()
+        fname = '{}_init.png'.format(k)
+        fnames.append(fname)
+        plt.savefig(os.path.join(output_dir, 'plots/{}'.format(fname)))
+        plt.close()
+
     # Rents
     plt.title('rents')
     for k in ['mean_rent_per_area', 'mean_adjusted_rent_per_area']:
@@ -58,7 +74,6 @@ def make_plots(output_dir):
     plt.close()
     del stats['min_value']
 
-
     for k, vals in stats.items():
         solo = True
 
@@ -68,7 +83,8 @@ def make_plots(output_dir):
             plt.title(k)
             plt.plot(range(len(vals)), vals, label='All')
             for neighb, vs in neighborhoods[k].items():
-                plt.plot(range(len(vals)), vs, label='Neighborhood {}'.format(neighb))
+                n = meta['neighborhoods'].get(neighb, {'name': 'Neighborhood {}'.format(neighb)})
+                plt.plot(range(len(vals)), vs, label=n['name'])
             plt.legend()
             fnames.append('{}_neighb.png'.format(k))
             plt.savefig(os.path.join(output_dir, 'plots/{}_neighb.png'.format(k)))
@@ -95,6 +111,7 @@ def make_plots(output_dir):
             plt.savefig(os.path.join(output_dir, 'plots/{}.png'.format(k)))
             plt.close()
 
+    neighbs = meta.pop('neighborhoods')
     with open(os.path.join(output_dir, 'plots/index.html'), 'w') as f:
         html = '''
             <html>

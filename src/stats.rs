@@ -3,12 +3,28 @@ use super::sim::Simulation;
 use serde_json::{json, Value};
 use std::collections::{HashMap, HashSet};
 
+pub fn init_stats(sim: &Simulation) -> Value {
+    let incomes: Vec<f32> = sim.tenants.iter().map(|t| t.income).collect();
+    let values: Vec<f32> = sim.city.units.iter().map(|u| u.value).collect();
+    let rents: Vec<f32> = sim.city.units.iter().map(|u| u.rent).collect();
+    let occupancies: Vec<usize> = sim.city.units.iter().map(|u| u.occupancy).collect();
+    let rents_per_occupancy: Vec<f32> = sim.city.units.iter().map(|u| u.rent/u.occupancy as f32).collect();
+    json!({
+        "incomes": incomes,
+        "values": values,
+        "rents": rents,
+        "rents_per_occupancy": rents_per_occupancy,
+        "occupancies": occupancies
+    })
+}
+
 pub fn stats(sim: &Simulation) -> Value {
     let n_units = sim.city.units.len() as f32;
     let mut n_housed = 0.;
     let mut n_vacant = 0.;
     let mut n_parcels = 0.;
     let mut n_affordable = 0.;
+    let mut mean_rent = 0.;
     let mut mean_rent_per_area = 0.;
     let mut mean_rent_per_tenant = 0.;
     let mut mean_adjusted_rent_per_area = 0.;
@@ -35,6 +51,7 @@ pub fn stats(sim: &Simulation) -> Value {
         let mut nei_n_doma = 0;
         let mut nei_n_vacant = 0.;
         let mut nei_n_tenants = 0;
+        let mut nei_mean_rent = 0.;
         let mut nei_mean_rent_per_area = 0.;
         let mut nei_mean_rent_per_tenant = 0.;
         let mut nei_mean_adjusted_rent_per_area = 0.;
@@ -46,6 +63,7 @@ pub fn stats(sim: &Simulation) -> Value {
             let unit = &sim.city.units[unit_id];
             let value = unit.value;
             mean_offers += unit.offers.len() as f32;
+            nei_mean_rent += unit.rent;
             nei_mean_rent_per_area += unit.rent_per_area();
             nei_mean_months_vacant += unit.months_vacant as f32;
             nei_mean_value_per_area += value / unit.area;
@@ -107,6 +125,7 @@ pub fn stats(sim: &Simulation) -> Value {
             neighb_id,
             json!({
                 "percent_vacant": nei_n_vacant/nei_n_units,
+                "mean_rent": nei_mean_rent/nei_n_units,
                 "mean_rent_per_tenant": nei_mean_rent_per_tenant/(nei_n_tenants as f32),
                 "mean_rent_per_area": nei_mean_rent_per_area/nei_n_units,
                 "mean_adjusted_rent_per_area": nei_mean_adjusted_rent_per_area/nei_n_units,
@@ -121,6 +140,7 @@ pub fn stats(sim: &Simulation) -> Value {
         );
 
         n_vacant += nei_n_vacant;
+        mean_rent += nei_mean_rent;
         mean_rent_per_tenant += nei_mean_rent_per_tenant;
         mean_rent_per_area += nei_mean_rent_per_area;
         mean_adjusted_rent_per_area += nei_mean_adjusted_rent_per_area;
@@ -165,6 +185,7 @@ pub fn stats(sim: &Simulation) -> Value {
         "n_units": n_units,
         "p_units": 1.,
         "mean_income": mean_income,
+        "mean_rent": mean_rent/n_units,
         "mean_rent_per_tenant": mean_rent_per_tenant/n_housed,
         "mean_rent_per_area": mean_rent_per_area/n_units,
         "mean_adjusted_rent_per_area": mean_adjusted_rent_per_area/n_units,
