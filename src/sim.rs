@@ -50,8 +50,9 @@ impl Simulation {
         }
         let work_dist = WeightedIndex::new(commercial_weights).unwrap();
         let vacancies: Vec<usize> = city.units.iter().map(|u| u.id).collect();
-        // let mut tenants: Vec<Tenant> = (0..1000)
-        let mut tenants: Vec<Tenant> = (0..design.city.population)
+        let occupancy = city.units.iter().fold(0, |acc, u| acc + u.occupancy);
+        let population_size = (config.pop_p_occupancy * occupancy as f32).round() as usize;
+        let mut tenants: Vec<Tenant> = (0..population_size)
             .map(|i| {
                 let tenant_id = i as usize;
                 let income = income_dist.sample(&mut rng);

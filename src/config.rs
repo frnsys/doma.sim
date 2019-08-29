@@ -28,6 +28,7 @@ pub struct Config {
     pub base_contribute_percent: f32,
     pub burn_in: usize,
     pub max_contagion_depth: usize,
+    pub pop_p_occupancy: f32,
 
     #[serde(default)]
     pub steps: usize,

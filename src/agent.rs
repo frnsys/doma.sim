@@ -125,7 +125,8 @@ impl Tenant {
     }
 
     pub fn adjusted_rent(&self, unit: &Unit) -> f32 {
-        let rent_per_tenant = f32::max(1., unit.rent / unit.tenants.len() as f32);
+        // let rent_per_tenant = f32::max(1., unit.rent / unit.tenants.len() as f32);
+        let rent_per_tenant = f32::max(1., unit.rent / unit.occupancy as f32);
         rent_per_tenant - f32::min(rent_per_tenant, self.last_dividend)
     }
 
@@ -133,7 +134,8 @@ impl Tenant {
         let n_tenants = (unit.tenants.len() + 1) as f32;
 
         // Adjust rent by last DOMA dividend
-        let rent_per_tenant = f32::max(1., unit.rent / n_tenants);
+        // let rent_per_tenant = f32::max(1., unit.rent / n_tenants);
+        let rent_per_tenant = f32::max(1., unit.rent / unit.occupancy as f32);
         let adjusted_rent_per_tenant = rent_per_tenant - f32::min(rent_per_tenant, self.last_dividend);
 
         if self.income < adjusted_rent_per_tenant {
@@ -457,7 +459,8 @@ impl DOMA {
 
             if !unit.vacant() {
                 rent += unit.rent;
-                let rent_per_tenant = rent / unit.tenants.len() as f32;
+                // let rent_per_tenant = rent / unit.tenants.len() as f32;
+                let rent_per_tenant = rent / unit.occupancy as f32;
                 for &t in &unit.tenants {
                     let share = self.shares.entry(t).or_insert(0.);
                     *share += rent_per_tenant * self.p_rent_share;

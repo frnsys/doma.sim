@@ -1,10 +1,13 @@
 # City design id
 DESIGN_ID: "philadelphia"
 
+# Percent of occupancy to use for population size
+POP_P_OCCUPANCY: 0.95
+
 # Initial DOMA funds for purchasing properties
 DOMA_STARTING_FUNDS: 2000000
 
-# Starting percent of rent to dividend
+# Starting percent of rent to equity
 DOMA_P_RENT_SHARE: 0.1
 
 # Starting percent of rent to DOMA funds
@@ -53,9 +56,9 @@ FRIEND_LIMIT: 120
 
 # DOMA contagion model
 TRANSMISSION_RATE: 0.1
-ENCOUNTER_RATE: 0.1
+ENCOUNTER_RATE: 0.2
 BASE_CONTRIBUTE_PROB: 0.01
-BASE_CONTRIBUTE_PERCENT: 0.0025
+BASE_CONTRIBUTE_PERCENT: 0.025
 
 # Number of tenants for players
 # to choose from

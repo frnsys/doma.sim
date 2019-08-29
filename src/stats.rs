@@ -85,18 +85,19 @@ pub fn stats(sim: &Simulation) -> Value {
             }
 
             let mut rent_discount = 0.;
-            let rent_per_tenant = unit.rent / unit.tenants.len() as f32;
+            // let rent_per_tenant = unit.rent / unit.tenants.len() as f32;
+            let rent_per_tenant = unit.rent / unit.occupancy as f32;
             for &t_id in &unit.tenants {
                 let tenant = &sim.tenants[t_id];
                 rent_discount += tenant.last_dividend;
                 nei_mean_rent_income_ratio += rent_per_tenant / tenant.income;
                 nei_mean_rent_per_tenant += rent_per_tenant;
-                if rent_per_tenant / tenant.income <= 0.3 {
+                if (rent_per_tenant-tenant.last_dividend) / tenant.income <= 0.3 {
                     n_affordable += 1.;
                 }
             }
-            nei_mean_adjusted_rent_per_area +=
-                f32::max(0., unit.rent - f32::min(unit.rent, rent_discount)) / unit.area;
+            let mean_adj_rent_per_area = f32::max(0., unit.rent - f32::min(unit.rent, rent_discount)) / unit.area;
+            nei_mean_adjusted_rent_per_area += mean_adj_rent_per_area;
             n_housed += unit.tenants.len() as f32;
             nei_n_tenants += unit.tenants.len();
 
@@ -105,11 +106,11 @@ pub fn stats(sim: &Simulation) -> Value {
                 AgentType::Landlord => {
                     let data = landlord_data.entry(unit.owner.1).or_insert((0., 0.));
                     data.0 += unit.condition;
-                    data.1 += mean_adjusted_rent_per_area;
+                    data.1 += mean_adj_rent_per_area;
                 },
                 AgentType::DOMA => {
                     doma_data.0 += unit.condition;
-                    doma_data.1 += mean_adjusted_rent_per_area;
+                    doma_data.1 += mean_adj_rent_per_area;
                     nei_n_doma += 1;
                 }
                 _ => {}
