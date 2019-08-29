@@ -28,6 +28,7 @@ pub struct Neighborhood {
 #[serde(rename_all = "camelCase")]
 pub struct CityConfig {
     pub name: String,
+    pub max_bedrooms: usize,
     pub price_per_sqm: f32,
     pub price_to_rent_ratio: f32,
     pub landlords: u32,

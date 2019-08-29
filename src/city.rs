@@ -1,5 +1,5 @@
 use rand::Rng;
-use std::cmp::{max};
+use std::cmp::{max, min};
 use std::str::FromStr;
 use super::design::{Design, Neighborhood};
 use super::grid::{HexGrid, Position};
@@ -8,6 +8,7 @@ use strum_macros::{EnumString, Display};
 use fnv::{FnvHashMap, FnvHashSet};
 use noise::{OpenSimplex, Seedable};
 use rand::rngs::StdRng;
+use rand_distr::{Beta, Distribution};
 
 pub struct PositionVector<T: Clone> {
     dims: (isize, isize),
@@ -205,10 +206,14 @@ impl City {
                     let mut building_units: Vec<usize> = Vec::new();
                     for _ in 0..n_units {
                         let area = rng.gen_range(neighb.min_area, neighb.max_area) as f32;
-                        let rent = design.city.price_per_sqm*area*neighb.desirability;
-                        let value = design.city.price_to_rent_ratio*(rent*12.);
+                        let value = design.city.price_per_sqm*area*neighb.desirability;
+                        let rent = value/design.city.price_to_rent_ratio/12.;
                         // println!("value: {:?}, rent: {:?}", value, rent);
-                        let occupancy = max(1, (area/neighb.sqm_per_occupant as f32).round() as usize);
+                        let area_div = area/neighb.sqm_per_occupant as f32;
+                        let occupancy_dist = Beta::new(area_div, 3.).unwrap();
+                        let sampled_occupancy = occupancy_dist.sample(rng) * design.city.max_bedrooms as f32;
+                        let occupancy = max(1,
+                                            min(area_div.round() as usize, sampled_occupancy.round() as usize));
                         let id = units.len();
                         let unit = Unit {
                             id: id,

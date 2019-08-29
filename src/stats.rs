@@ -7,6 +7,7 @@ pub fn init_stats(sim: &Simulation) -> Value {
     let incomes: Vec<f32> = sim.tenants.iter().map(|t| t.income).collect();
     let values: Vec<f32> = sim.city.units.iter().map(|u| u.value).collect();
     let rents: Vec<f32> = sim.city.units.iter().map(|u| u.rent).collect();
+    let areas: Vec<f32> = sim.city.units.iter().map(|u| u.area).collect();
     let occupancies: Vec<usize> = sim.city.units.iter().map(|u| u.occupancy).collect();
     let rents_per_occupancy: Vec<f32> = sim.city.units.iter().map(|u| u.rent/u.occupancy as f32).collect();
     json!({
@@ -14,7 +15,8 @@ pub fn init_stats(sim: &Simulation) -> Value {
         "values": values,
         "rents": rents,
         "rents_per_occupancy": rents_per_occupancy,
-        "occupancies": occupancies
+        "occupancies": occupancies,
+        "areas": areas
     })
 }
 
