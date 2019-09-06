@@ -2,7 +2,7 @@
 DESIGN_ID: "philadelphia"
 
 # Percent of occupancy to use for population size
-POP_P_OCCUPANCY: 0.95
+POP_P_OCCUPANCY: 0.99
 
 # Initial DOMA funds for purchasing properties
 DOMA_STARTING_FUNDS: 2000000
@@ -70,4 +70,4 @@ BURN_IN: 32
 # Maximum propagation depth
 # for the contagion model;
 # high values can severly degrade speed
-MAX_CONTAGION_DEPTH: 2
+MAX_CONTAGION_DEPTH: 3

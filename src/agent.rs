@@ -87,7 +87,13 @@ impl Tenant {
                 if u.vacancies() <= 0 {
                     acc
                 } else {
-                    let desirability = self.desirability(u, p);
+                    let desirability = if conf.debug && u.is_doma() {
+                        // If playing (i.e. debug=false), bots
+                        // leave DOMA units for players to choose from
+                        0.
+                    } else {
+                        self.desirability(u, p)
+                    };
                     if desirability > acc.1 {
                         (u_id, desirability)
                     } else {
@@ -231,7 +237,7 @@ impl Landlord {
             rent_obvs: rent_obvs,
             trend_ests: trend_ests,
             invest_ests: invest_ests,
-            maintenance: 0.001,
+            maintenance: 0.01,
         }
     }
 
@@ -485,42 +491,56 @@ impl DOMA {
 
         // TODO selling of properties
 
-        // Make offers on properties
-        // Get non-DOMA properties of DOMA tenants
-        let mut candidates: Vec<(usize, f32, f32)> = self
-            .shares
-            .keys()
-            .filter_map(|&t| {
-                let tenant = &tenants[t];
-                match tenant.unit {
-                    Some(u_id) => {
-                        let unit = &mut city.units[u_id];
-                        if unit.owner.0 != AgentType::DOMA {
-                            Some((u_id, unit.value, unit.rent))
-                        } else {
-                            None
-                        }
-                    }
-                    None => None,
+        // // Make offers on properties
+        // // Get non-DOMA properties of DOMA tenants
+        // let mut candidates: Vec<(usize, f32, f32)> = self
+        //     .shares
+        //     .keys()
+        //     .filter_map(|&t| {
+        //         let tenant = &tenants[t];
+        //         match tenant.unit {
+        //             Some(u_id) => {
+        //                 let unit = &mut city.units[u_id];
+        //                 if unit.owner.0 != AgentType::DOMA {
+        //                     Some((u_id, unit.value, unit.rent))
+        //                 } else {
+        //                     None
+        //                 }
+        //             }
+        //             None => None,
+        //         }
+        //     })
+        //     .collect();
+
+        // // Otherwise, consider all unowned properties
+        // if candidates.len() == 0 {
+        //     candidates = city
+        //         .units
+        //         .iter_mut()
+        //         .filter_map(|unit| {
+        //             // Ensure unit is affordable
+        //             if unit.owner.0 != AgentType::DOMA {
+        //                 Some((unit.id, unit.value, unit.rent))
+        //             } else {
+        //                 None
+        //             }
+        //         })
+        //         .collect();
+        // }
+
+        let mut candidates: Vec<(usize, f32, f32)> = city
+            .units
+            .iter_mut()
+            .filter_map(|unit| {
+                // Ensure unit is affordable
+                if unit.owner.0 != AgentType::DOMA {
+                    Some((unit.id, unit.value, unit.rent))
+                } else {
+                    None
                 }
             })
             .collect();
 
-        // Otherwise, consider all unowned properties
-        if candidates.len() == 0 {
-            candidates = city
-                .units
-                .iter_mut()
-                .filter_map(|unit| {
-                    // Ensure unit is affordable
-                    if unit.owner.0 != AgentType::DOMA {
-                        Some((unit.id, unit.value, unit.rent))
-                    } else {
-                        None
-                    }
-                })
-                .collect();
-        }
 
         // Filter to affordable
         candidates = candidates
@@ -534,12 +554,13 @@ impl DOMA {
         // Make offers
         let mut committed = 0.;
         for (id, value, _) in candidates {
-            if (committed + value) > self.funds {
+            let bid = value;
+            if (committed + bid) > self.funds {
                 break;
             }
-            committed += value;
+            committed += bid;
             let unit = &mut city.units[id];
-            unit.offers.push((AgentType::DOMA, 0, value));
+            unit.offers.push((AgentType::DOMA, 0, bid));
         }
     }
 

@@ -205,6 +205,7 @@ pub fn stats(sim: &Simulation) -> Value {
         "doma_members_p": sim.doma.shares.len() as f32/sim.tenants.len() as f32,
         "doma_raised": sim.doma.raised,
         "doma_property_fund": sim.doma.funds,
+        "doma_p_dividend": 1.0 - sim.doma.p_reserves - sim.doma.p_expenses,
         "mean_desirability": mean_desirability/n_parcels,
         // 'doma_total_dividend_payout': self.doma.last_payout,
         // 'n_sales': sum(t.sales for t in self.landlords + self.tenants),

@@ -42,6 +42,8 @@ pub fn jsonify(month: usize, city: &City, design: &Design, stats: Value) -> Valu
                             "id": u,
                             "rent": unit.rent,
                             "tenants": unit.tenants.len(),
+                            "condition": unit.condition,
+                            "spaciousness": unit.area/unit.occupancy as f32,
                             "occupancy": unit.occupancy,
                             "owner": json!({
                                 "id": unit.owner.1,

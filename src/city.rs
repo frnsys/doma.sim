@@ -347,6 +347,10 @@ impl Unit {
     pub fn value_per_area(&self) -> f32 {
         self.value/self.area
     }
+
+    pub fn is_doma(&self) -> bool {
+        self.owner.0 == AgentType::DOMA
+    }
 }
 
 

@@ -19,17 +19,17 @@ pub enum Status {
 
 #[derive(Display, PartialEq, Debug, Deserialize)]
 enum Command {
-    SelectTenant(String, usize), // player_id, tenant_id
-    ReleaseTenant(String),       // player_id
-    ReleaseTenants,              //
-    MoveTenant(String, usize),   // player_id, unit_id
-    DOMAAdd(String, f32),        // player_id, amount
-    DOMAPreach(String, f32),     // player_id, amount
-    DOMAConfigure(f32, f32, f32),// p_dividend, p_rent_share, rent_income_limit
-    RentFreeze(usize),           // months
-    MarketTax(usize),            // months
-    Run(usize),                  // steps
-    Reset,                       //
+    SelectTenant(String, usize),    // player_id, tenant_id
+    ReleaseTenant(String),          // player_id
+    ReleaseTenants,                 //
+    MoveTenant(String, usize),      // player_id, unit_id
+    DOMAAdd(String, f32),           // player_id, amount
+    DOMAPreach(String, f32, bool),  // player_id, amount, trigger
+    DOMAConfigure(f32, f32, f32),   // p_dividend, p_rent_share, rent_income_limit
+    RentFreeze(usize),              // months
+    MarketTax(usize),               // months
+    Run(usize),                     // steps
+    Reset,                          //
 }
 
 pub enum Control {
@@ -253,15 +253,19 @@ impl PlayManager {
                                 None => {}
                             }
                         },
-                        Command::DOMAPreach(p_id, amount) => {
+                        Command::DOMAPreach(p_id, amount, trigger) => {
                             println!("Player {:?} preaching {:?}", p_id, amount);
                             match self.players.get(&p_id) {
                                 Some(&tenant_id) => {
-                                    sim.conf.encounter_rate = f32::max(sim.conf.encounter_rate + amount, 0.75);
-                                    let infected = sim.social_graph.contagion(tenant_id, sim.conf.encounter_rate, sim.conf.transmission_rate, sim.conf.max_contagion_depth, rng);
-                                    for t_id in infected {
-                                        let t = &sim.tenants[t_id];
-                                        sim.doma.add_funds(t_id, sim.conf.base_contribute_percent * t.income);
+                                    sim.conf.encounter_rate = f32::min(sim.conf.encounter_rate + amount, 0.75);
+                                    sim.conf.base_contribute_prob = f32::min(sim.conf.base_contribute_prob + amount, 0.75);
+                                    sim.conf.base_contribute_percent = f32::min(sim.conf.base_contribute_percent + amount, 0.20);
+                                    if trigger {
+                                        let infected = sim.social_graph.contagion(tenant_id, sim.conf.encounter_rate, sim.conf.transmission_rate, sim.conf.max_contagion_depth, rng);
+                                        for t_id in infected {
+                                            let t = &sim.tenants[t_id];
+                                            sim.doma.add_funds(t_id, sim.conf.base_contribute_percent * t.income);
+                                        }
                                     }
                                 },
                                 None => {}
