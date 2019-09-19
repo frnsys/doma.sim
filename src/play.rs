@@ -126,6 +126,7 @@ impl PlayManager {
             self.con.set(key, json!({
                 "id": t_id,
                 "income": tenant.income,
+                "dividend": tenant.last_dividend,
                 "rent": adjusted_rent,
                 "work": {
                     "pos": tenant.work,
