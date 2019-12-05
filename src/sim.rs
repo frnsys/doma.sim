@@ -106,11 +106,11 @@ impl Simulation {
                 let u = &mut city.units[u_id];
                 let roll: f32 = rng.gen();
                 u.owner = if !u.vacant() {
-                    if roll < 0.5 {
+                    if roll < 0.75 {
                         let landlord = landlords.choose_mut(&mut rng).unwrap();
                         landlord.units.push(u.id);
                         (AgentType::Landlord, landlord.id)
-                    } else if roll < 0.75 {
+                    } else if roll < 0.9 {
                         let unit_tenants: Vec<usize> = u.tenants.iter().cloned().collect();
                         let t_id = *unit_tenants.choose(&mut rng).unwrap();
                         tenants[t_id].units.push(u.id);
