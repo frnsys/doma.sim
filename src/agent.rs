@@ -144,7 +144,8 @@ impl Tenant {
         let rent_per_tenant = f32::max(1., unit.rent / unit.occupancy as f32);
         let adjusted_rent_per_tenant = rent_per_tenant - f32::min(rent_per_tenant, self.last_dividend);
 
-        if self.income < adjusted_rent_per_tenant {
+        // Tenants can spend at most 1/3 of income on rent
+        if self.income/3. < adjusted_rent_per_tenant {
             0.
         } else {
             let ratio = (self.income / adjusted_rent_per_tenant).sqrt();
