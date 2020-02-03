@@ -1,7 +1,7 @@
 use serde::Deserialize;
 use redis::{Commands, Connection};
 use strum_macros::{Display};
-use super::agent::Tenant;
+use super::agent::{Tenant, DOMA};
 use super::policy::Policy;
 use super::sim::Simulation;
 use super::city::City;
@@ -93,7 +93,7 @@ impl PlayManager {
         }
     }
 
-    pub fn sync_players(&self, tenants: &Vec<Tenant>, city: &City) -> redis::RedisResult<()> {
+    pub fn sync_players(&self, tenants: &Vec<Tenant>, city: &City, doma: &DOMA) -> redis::RedisResult<()> {
         for (player_id, &t_id) in &self.players {
             let tenant = &tenants[t_id];
             let mut adjusted_rent = None;
@@ -126,6 +126,10 @@ impl PlayManager {
             self.con.set(key, json!({
                 "id": t_id,
                 "income": tenant.income,
+                "shares": match doma.shares.get(&t_id) {
+                    None => 0.,
+                    Some(s) => *s
+                },
                 "dividend": tenant.last_dividend,
                 "rent": adjusted_rent,
                 "work": {

@@ -125,7 +125,7 @@ fn main() {
                             pb.inc();
                         }
                         sync::sync(sim.time, &sim.city, &sim.design, stats::stats(&sim)).unwrap();
-                        play.sync_players(&sim.tenants, &sim.city).unwrap();
+                        play.sync_players(&sim.tenants, &sim.city, &sim.doma).unwrap();
                         play.set_ready().unwrap();
                         println!("Finished running.");
                     },
