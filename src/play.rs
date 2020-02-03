@@ -215,6 +215,9 @@ impl PlayManager {
                                 },
                                 None => {}
                             }
+
+                            // Reset tenant DOMA shares
+                            sim.doma.shares.insert(t_id, 0.);
                         },
                         Command::ReleaseTenant(p_id) => {
                             println!("Player left: {:?}", p_id);
