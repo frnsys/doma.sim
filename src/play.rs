@@ -4,7 +4,7 @@ use strum_macros::{Display};
 use super::agent::{Tenant, DOMA};
 use super::policy::Policy;
 use super::sim::Simulation;
-use super::city::City;
+use super::city::{City, Unit};
 use rand::seq::SliceRandom;
 use serde_json::{json, Value};
 use std::collections::HashMap;
@@ -57,6 +57,14 @@ impl PlayManager {
         let mut rng = rand::thread_rng();
         let tenants = tenants.choose_multiple(&mut rng, size);
         let _: () = self.con.del("tenants").unwrap();
+
+        // Move tenants into vacant units if necessary
+        let vacant_units: Vec<&Unit> = city
+            .units
+            .iter()
+            .filter(|u| u.vacancies() > 0)
+            .collect();
+
         for t in tenants {
             let mut adjusted_rent = None;
             let mut unit_neighborhood = None;
@@ -69,7 +77,17 @@ impl PlayManager {
                         None => None
                     };
                 },
-                None => {}
+                None => {
+                    for u in &vacant_units {
+                        if t.adjusted_rent(u) < t.income {
+                            adjusted_rent = Some(t.adjusted_rent(u));
+                            unit_neighborhood = match city.neighborhood_for_pos(&u.pos) {
+                                Some(neighb) => Some(&neighb.name),
+                                None => None
+                            };
+                        }
+                    }
+                }
             };
 
             let work_neighborhood = match city.neighborhood_for_pos(&t.work) {
