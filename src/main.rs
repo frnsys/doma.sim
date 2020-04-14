@@ -5,6 +5,7 @@ extern crate pbr;
 extern crate rand;
 extern crate redis;
 extern crate serde;
+extern crate sentry;
 extern crate serde_json;
 extern crate serde_yaml;
 extern crate petgraph;
@@ -32,6 +33,7 @@ use std::fs;
 use std::os::unix::fs::symlink;
 use std::path::Path;
 use chrono::{DateTime, Utc, Local};
+use sentry::integrations::panic::register_panic_handler;
 
 fn save_run_data(sim: &Simulation, history: &Vec<Value>, init: &Value, conf: &Config) {
     let now: DateTime<Utc> = Utc::now();
@@ -73,6 +75,9 @@ fn main() {
     let debug = conf.debug;
     let steps = conf.steps;
     let mut rng: StdRng = SeedableRng::seed_from_u64(conf.seed);
+
+    let _guard = sentry::init(conf.sentry_dsn.clone());
+    register_panic_handler();
 
     let mut play = PlayManager::new();
     loop {

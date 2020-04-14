@@ -38,6 +38,8 @@ pub struct Config {
 
     #[serde(default)]
     pub seed: u64,
+
+    pub sentry_dsn: String,
 }
 
 pub fn load_config() -> Config {
