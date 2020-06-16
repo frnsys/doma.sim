@@ -11,6 +11,8 @@ use std::collections::HashMap;
 use rand::rngs::StdRng;
 use std::{thread, time};
 
+static COMMAND_INTERVAL_MS: u64 = 500;
+
 #[derive(Display, Debug)]
 pub enum Status {
     Loading,
@@ -202,7 +204,7 @@ impl PlayManager {
     }
 
     pub fn wait_for_control(&mut self, sim: &mut Simulation, rng: &mut StdRng) -> Control {
-        let ms = time::Duration::from_millis(100);
+        let ms = time::Duration::from_millis(COMMAND_INTERVAL_MS);
         loop {
             let control = self.process_commands(sim, rng);
             match control {
