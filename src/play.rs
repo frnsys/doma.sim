@@ -9,6 +9,7 @@ use rand::seq::SliceRandom;
 use serde_json::{json, Value};
 use std::collections::HashMap;
 use rand::rngs::StdRng;
+use std::{thread, time};
 
 #[derive(Display, Debug)]
 pub enum Status {
@@ -201,11 +202,15 @@ impl PlayManager {
     }
 
     pub fn wait_for_control(&mut self, sim: &mut Simulation, rng: &mut StdRng) -> Control {
+        let ms = time::Duration::from_millis(100);
         loop {
             let control = self.process_commands(sim, rng);
             match control {
                 Some(ctrl) => return ctrl,
-                None => continue
+                None => {
+                    thread::sleep(ms);
+                    continue
+                }
             }
         }
     }
